@@ -4,7 +4,7 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
-## What's new in 1.1.0
+## What's new in 1.1 (current release 1.1.1)
 
 | Change | Details |
 |---|---|
