@@ -2,7 +2,7 @@
 ## Title: Forager
 ## Notes: Where to farm any gathering profession or material in WoW Forever: ranked spots, map areas and routes, node pins, and loot/skinning chances on mob tooltips.
 ## Author: Jack
-## Version: 1.1.1
+## Version: 1.1.2
 ## X-License: GPL-3.0-or-later
 ## X-Curse-Project-ID: 1806735
 ## SavedVariables: ForagerDB

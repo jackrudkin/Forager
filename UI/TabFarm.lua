@@ -136,7 +136,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     scopeLbl:SetPoint("LEFT", loc, "RIGHT", 18, 0)
     local scope = UI.Dropdown(row3, 190, function() return Main.ZoneItems(true, true) end,
         function() return ns.char.questZone or false end,
-        function(v) ns.Quests:Set(v or nil, ns.char.questZone2) end)
+        function(v) ns.Quests:Set(v or nil, v and ns.char.questZone2 or nil) end)
     scope:SetPoint("LEFT", scopeLbl, "RIGHT", 8, 0)
     UI.AttachTip(scope, "Questing zone", "Pick the zone you're questing in to rank spots there, counting the detour from your quest objectives. Everywhere = best spot for your level.")
     local enemy = UI.Check(row3, "Enemy zones", function() return ns.settings.includeEnemy end,

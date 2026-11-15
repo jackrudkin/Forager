@@ -96,7 +96,8 @@ local HELP = {
     "/forage map - open the world map at your farm spot",
     "/forage caves - caves known in this zone",
     "/forage diag - diagnostics (paste this when reporting a problem)",
-    "/forage quest <zone name> | current | off - set questing zone",
+    "/forage quest <zone name> | current | auto | off - set questing zone",
+    "/forage quest2 <zone name> | off - optional next quest hub (ranked too)",
     "/forage mode gold | skill - rank by gold/hour or skill-ups/hour",
     "/forage mob - print Forager lines for your target",
     "/forage import - import GatherMate2/GatherLite nodes",
@@ -157,6 +158,14 @@ local function slash(msg)
         else
             local z = findZone(rest)
             if z then ns.Quests:Set(z, ns.char.questZone2) ns:Print("Questing in: " .. ns.Zones[z].name) else ns:Print("Unknown zone: " .. rest) end
+        end
+    elseif cmd == "quest2" then
+        local r = rest:lower()
+        if r == "off" or r == "" then ns.Quests:Set(ns.char.questZone, nil) ns:Print("Next hub cleared.")
+        elseif not ns.char.questZone then ns:Print("Set a questing zone first (/forage quest <zone>).")
+        else
+            local z = findZone(rest)
+            if z then ns.Quests:Set(ns.char.questZone, z) ns:Print("Next hub: " .. ns.Zones[z].name) else ns:Print("Unknown zone: " .. rest) end
         end
     elseif cmd == "mode" then
         if rest == "gold" or rest == "skill" then ns.settings.mode = rest ns:Print("Ranking by " .. (rest == "gold" and "gold/hour" or "skill-ups/hour")) end

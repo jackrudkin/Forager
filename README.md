@@ -4,7 +4,7 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
-## What's new in 1.1 (current release 1.1.1)
+## What's new in 1.1 (current release 1.1.2)
 
 | Change | Details |
 |---|---|
@@ -107,11 +107,11 @@ Herbalism, Mining, Skinning, Fishing, Cloth (Linen to Runecloth/Felcloth), Green
 
 ## Questing-zone mode
 
-Pick the zone you're questing in, or **Use current zone**, or **Auto** (follows you), plus an optional next-hub zone. The choice is remembered per character.
+In the Farm tab, **Search in** picks the scope: **Everywhere** (zones for your level), **Current zone** (follows you) or a specific zone you're questing in. `/forage quest2 <zone>` adds an optional next-hub zone. The choice is remembered per character.
 
-- Only those zones are ranked. Each area is scored by its rate including the detour: travel from the nearest active quest objective (`C_QuestLog.GetQuestsOnMap`) plus one loop. The **Detour** column shows the extra minutes.
-- Mobs named in your active objectives (e.g. "Prowler slain: 2/8") are listed as quest mobs when they're in the farming area. Quest objectives inside the area are counted.
-- **X** clears it and goes back to dedicated farming. The Find tab always shows the best spot anywhere for comparison.
+- Only those zones are ranked. Each area is scored by its rate including the detour: travel from the nearest active quest objective (`C_QuestLog.GetQuestsOnMap`) plus one loop. Cards show the detour in minutes.
+- Mobs named in your active objectives (e.g. "Prowler slain: 2/8") are marked **QUEST** when they're in the farming area. Quest objectives inside the area are counted.
+- **Everywhere** goes back to dedicated farming.
 
 ## Mob tooltip
 
@@ -143,6 +143,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `/forage caves` | Caves in this zone, cells you've walked, whether you're in one |
 | `/forage diag` | Diagnostics to paste into a bug report |
 | `/forage quest <zone>` / `current` / `auto` / `off` | Set or clear the questing zone |
+| `/forage quest2 <zone>` / `off` | Optional next quest hub (ranked too) |
 | `/forage mode gold` / `skill` | Rank by gold/hour or skill-ups/hour |
 | `/forage mob` | Print Forager's lines for your target |
 | `/forage import` | Import GatherMate2 / GatherLite nodes |
