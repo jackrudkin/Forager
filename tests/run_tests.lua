@@ -60,6 +60,16 @@ test("login initialises DB, skills, data", function()
     assertTrue(ForagerData and ForagerData.nodes, "data loaded")
 end)
 
+test("TOC metadata for packaging (CurseForge ID, versions match)", function()
+    local toc = io.open(ADDON_DIR .. "/Forager.toc"):read("*a")
+    assertTrue(toc:find("## X%-Curse%-Project%-ID: 1806735"), "CurseForge project ID missing from Forager.toc")
+    assertTrue(toc:find("## Interface: 16001"), "interface")
+    local v = toc:match("## Version: ([%d%.]+)")
+    for _, f in ipairs({ BACKUP_DIR .. "/Forager_Backup.toc", DATA_DIR .. "/Forager_Data.toc" }) do
+        assertTrue(io.open(f):read("*a"):match("## Version: ([%d%.]+)") == v, "version mismatch in " .. f)
+    end
+end)
+
 test("node types have Forever additions and objects", function()
     local peace = ns.NodeTypes[1]
     assertTrue(peace.name == "Peacebloom" and #peace.objects > 0)

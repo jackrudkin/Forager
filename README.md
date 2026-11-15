@@ -191,8 +191,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 29 tests. They cover:
-  - login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 30 tests. They cover:
+  - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, pins (farm-only vs all, numbered stops);
   - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps.
