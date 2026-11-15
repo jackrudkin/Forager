@@ -1,8 +1,21 @@
 # Forager (WoW Forever)
 
-Tells you where to farm for any gathering profession or material, draws the area and an optimised route on the world map and minimap, shows your own icon for every known node, and adds loot, skinning and gear-grade chances to mob tooltips. Built to replace GatherLite, GatherMate2 and similar addons.
+Tells you where to farm any gathering profession, material or single item (including inside caves and mines), draws the area and an optimised route on the world map and minimap, shows what every mob drops ranked by gold per kill, and adds loot, skinning and gear-grade chances to mob tooltips. Built to replace GatherLite, GatherMate2 and similar addons.
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
+
+## What's new in 1.1.0
+
+| Change | Details |
+|---|---|
+| World map is no longer covered in nodes | Default shows only the nodes of the spot you're farming or previewing. **Off / Farm only / All** for the world map and the minimap, in Route & Map or Settings. |
+| Route now shows reliably | Numbered stops are HereBeDragons pins, and area/route lines are translated to whatever map is open: zone, continent or OpenMap. Draw errors are caught and shown in `/forage diag`. |
+| "Open world map" opens at your farm | It opens straight to the farm zone with the area, route and stops drawn. Starting a farm also places the game's own map pin there, plus a TomTom arrow if TomTom is installed. |
+| New look | Dark flat window with a sidebar, a **Now farming** card, result cards with a zone map preview, and a movable route HUD (arrow, distance, Skip/Map/Stop). |
+| Farm anything | Type any item in **What do you want to farm?** (e.g. *Copper Ore*, *Linen Cloth*). Forager ranks node areas, mob camps and fishing zones for that item. |
+| Caves & mines | A **Location** filter (Anywhere / Caves & mines / Outdoors) in Farm and in Mobs & Drops. See [Caves & mines](#caves--mines). |
+| Mobs & Drops | Every mob in your zone (or all zones for your level) ranked by **gold per kill**, with cave name, best drop, green/blue %, skin skill and **Farm this mob**. |
+| `/forage diag` | Prints what Forager sees (map IDs, translation, APIs, OpenMap/TomTom, last draw error) to paste into a bug report. |
 
 ## Install
 
@@ -43,19 +56,48 @@ Since 7 Nov (build 70862) and 13 Nov 2026 (a server-side change), Forever no lon
 
 A pin marks a known spawn point, not a live node. The game's own yellow dots still show live nodes.
 
-## Window tabs (`/forage`)
+## Window (`/forage`)
+
+The sidebar has six tabs. Below them, the **Now farming** card shows the active farm with **Map** and **Stop** buttons. The status bar at the bottom shows your search scope, session gold/hour and price sources.
 
 | Tab | What's there |
 |---|---|
-| **Header** | **Goal** dropdown; **Rank by** (Gold/hour or Skill-ups/hour); big **Start farming** button and **Stop**; **Questing zone** dropdown with **Use current zone** and **X** to clear; optional **Next hub** zone. The status line shows `Questing in: <zone>`, the active farm and session gold/hour. |
-| **Find** | Ranked table of zones and sub-areas. Columns: Zone, Area (centre coords), Rate, w/ travel (questing mode), Detour, Levels, Skill (coloured vs yours), Density, Risk (Friendly / Contested / Enemy territory), Data confidence. Hover a row for why it ranks: node mix, mobs with value per kill, quest mobs in the area, quest objectives inside it, detour minutes. Click a row to draw it and start the arrow. In questing mode a line shows **best anywhere** for comparison. |
-| **Map & Route** | Active route: waypoints with coords, target and distance from the previous one; loop length/time, loop number, progress. Buttons: Open world map, Skip waypoint, Restart from here, Stop. Layer toggles (area, route, arrow, mob camps, minimap pins, world map pins) and a legend. |
-| **Nodes** | Per-zone node database. Columns: Show, Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node. Click a row to show or hide that node type on the maps. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone, kind filters, "Only nodes I can gather". |
-| **Mobs** | Look up a mob or a material (e.g. `Linen Cloth`, `Boar`, or an item link). Columns: Mob, Level, Type, Zone, Chance for the searched material, Skinning skill, Green/Blue/Epic %, Value/kill, your sample size. Hover a row for the full tooltip lines. |
-| **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted (total, this session, value). Last 30 sessions. Data health (learned nodes, mobs observed, database, last write, backup). **Save now** and **Backup now**. |
-| **Settings** | Map layers and opacity, pin size, distance fade, hide in combat/instances, finder assumptions (live share of spawn points, kills/hour, casts/hour, seconds per gather, sample size where your data takes over, travel speed, include elites), tooltip parts, price source order, sharing, minimap button, save reminder, debug. |
+| **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** toggle. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
+| **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
+| **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map layers: area, route + numbered stops, route HUD, game map pin, TomTom, world-map node pins (Off / Farm only / All) and minimap node pins (Off / Farm only / All nearby), plus a legend. |
+| **Nodes** | Per-zone node database. Columns: Show, Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node. Click a row to show or hide that node type. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone, kind filters, "Only nodes I can gather". |
+| **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions, data health, **Save now** and **Backup now**. |
+| **Settings** | Node pins (world map / minimap), sources, distance fade, hide in combat/instances, pin/area/route opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
 
 There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
+
+## Caves & mines
+
+No public data source has positions for cave interiors (Questie and CMaNGOS spawns only record the zone), so Forager combines three things:
+
+| Source | What it gives | Works |
+|---|---|---|
+| Cave names per zone (QuestieDB area table) | 35 zones list their caves and mines, e.g. Elwynn Forest: Echo Ridge Mine, Fargodeep Mine, Jasperlode Mine | Always |
+| The game's explored-map areas (`C_MapExplorationInfo.GetExploredAreaIDsAtPosition`) | Which subzone a spawn point lies in; a cave or mine name counts as a cave | For map areas you have explored |
+| Learning as you play | Every 2 s while you're indoors in a cave subzone, Forager records your 1 % map cell. Mobs you target, mouse over or see nameplates for there are marked as cave mobs | Fills in as you visit caves |
+
+- **Caves & mines** keeps only spawn points known to be in a cave. It uses a tighter area (about 450 yd) and skips zones without caves. Results are marked **CAVE** (purple area on the maps), and the cave's name replaces the subzone.
+- **Outdoors** drops known cave points. Points with unknown status are kept.
+- If nothing is known yet, the Farm tab lists the caves in zones for your level, so you know where to go.
+- `/forage caves` lists the zone's caves, the cells you've walked and whether you're in one now.
+
+## World map, minimap and OpenMap
+
+- **Start farming** draws the area (yellow, purple for caves), the route and numbered stops on the world map and minimap. The next stop is gold. It also places the game's map pin on the area. **Stop** removes all of it.
+- **Show on world map** previews a result without starting it. The preview disappears when you close the map.
+- **Open world map** (HUD, Now farming card, Route & Map, `/forage map`) opens the map at the farm zone.
+- **Node pins on the world map** default to **Farm only**: only the nodes of the active or previewed spot. **All** brings back every eligible node of the zone you're viewing.
+- **OpenMap** runs inside the normal `WorldMapFrame`. Its source code (GitHub) wasn't available while this was written, so Forager uses the three methods most likely to show there:
+  - the game's own map pin, which OpenMap draws (it drops one on Ctrl-click);
+  - HereBeDragons pins flagged to show on parent and continent maps;
+  - lines on the map canvas translated to the displayed map ID.
+
+  If the area or route doesn't appear in OpenMap, run `/forage diag` with the map open and send the output.
 
 ## Goals
 
@@ -94,9 +136,12 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | Command | Does |
 |---|---|
 | `/forage` (or `/forager`) | Open/close the window |
-| `/forage start [goal]` | Best spot now. Goals: herb ore skin fish cloth greens leather meat elemental lockbox gold |
+| `/forage start [goal or item]` | Best spot now. Goals: herb ore skin fish cloth greens leather meat elemental lockbox gold, or an item name (`/forage start copper ore`) |
 | `/forage stop` | Stop the route |
-| `/forage find` / `map` / `nodes` / `mobs` / `stats` / `settings` | Open that tab |
+| `/forage farm` / `mobs` / `route` / `nodes` / `stats` / `settings` | Open that tab |
+| `/forage map` | Open the world map at your farm |
+| `/forage caves` | Caves in this zone, cells you've walked, whether you're in one |
+| `/forage diag` | Diagnostics to paste into a bug report |
 | `/forage quest <zone>` / `current` / `auto` / `off` | Set or clear the questing zone |
 | `/forage mode gold` / `skill` | Rank by gold/hour or skill-ups/hour |
 | `/forage mob` | Print Forager's lines for your target |
@@ -111,7 +156,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 - **Value per gather** = Σ (expected count per open × price) × gathers per node (multi-tap ore veins), from the node's CMaNGOS loot table.
 - **Prices:** AuctionTrends `GetMarketValue` → Auctionator `GetAuctionPriceByItemID` → vendor price (order set in Settings). Forager only reads them and never touches Auctionator.
-- **Area:** each zone is split into a 20 × 20 grid. Forager picks the window of cells, about 800 yards across, with the highest total value (or skill-up chance). Up to 2 areas per zone (4 in questing mode).
+- **Area:** each zone is split into a 20 × 20 grid. Forager picks the window of cells, about 800 yards across (450 in Caves & mines), with the highest total value (or skill-up chance). Up to 2 areas per zone (4 in questing mode). In cave mode the area shrinks to the cave's spawn points.
+- **Item goals:** node areas are weighted by expected count × price of that item, mob camps by drop chance × price (by chance if the item has no price), fishing zones by catch rate. If the item has no price, results are ranked by quantity per hour.
 - **Route:** up to 40 of the best points in the area, at least 25 yd apart, in a closed loop (nearest neighbour + 2-opt). Mob routes go through up to 14 camp centres. Distances come from HereBeDragons zone sizes.
 - **Gold/hour (nodes)** = live nodes per loop × value per node × loops per hour.
   - Live nodes = spawn points × live share (default 30%).
@@ -120,8 +166,9 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 - **Gold/hour (mobs)** = kills/hour × value per kill.
   - Kills/hour = setting (default 45) × density, where density = min(1, spawns in area ÷ 25) × level factor.
   - Level factor: mobs more than 3 levels above you, and elites, are excluded unless allowed in Settings; mobs well below you count as faster kills.
-  - Value per kill = Σ chance × price for the goal's items. Cloth, meat and elemental also get ×1.2 for stacks. Skinning counts only if your skill is high enough.
-- **Greens:** P(green) × expected disenchant value + P(blue) × one shard. The disenchant table follows Classic armour splits by item level. If enchanting mats have no AH price, an estimated vendor value (0.7 × ilvl² copper) is used instead.
+  - Value per kill = Σ chance × price for the goal's items. Skinning counts only if your skill is high enough.
+  - **Gold/kill** in Mobs & Drops = every drop × price + average coin + disenchant value of greens/blues + skins if you have Skinning.
+- **Greens:** P(green) × expected green disenchant value + P(blue) × expected blue disenchant value. The disenchant table follows Classic armour splits by item level. If enchanting mats have no AH price, an estimated vendor value (0.7 × ilvl² copper) is used instead.
 - **Gear grade %:** P(at least one green, blue or epic weapon/armour) per kill. This combines independent loot rows as 1 − Π(1 − p) and adds up the chances inside each loot group, including shared world-drop reference tables.
 - **Skill-ups/hour:** chance per gather by colour — orange 100%, yellow 75%, green 25%, grey 0. Herb/ore colour thresholds are required skill +25/+50/+100.
   - Fishing is rough: min(1, (300 − skill)/300 + 0.05) × 0.6 per catch.
@@ -144,7 +191,13 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 26 tests covering login, decoding, finder (all goal types, both modes, questing), routes, tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode, UI tabs, slash commands and pins. Run with `lua5.1 tests/run_tests.lua`.
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 29 tests. They cover:
+  - login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
+  - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
+  - UI tabs (fails on any UI build error), slash commands, pins (farm-only vs all, numbered stops);
+  - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps.
+
+  Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
 - `tools/`: data build scripts (`build_data.py`) and instructions to regenerate `Forager_Data` from QuestieDB and CMaNGOS.
 
@@ -154,6 +207,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 - New Forever zones and node types are learned only as you, your guild or imports find them.
 - Gold/hour is an estimate. It assumes you're the only farmer, that 30% of spawn points are live, and straight-line travel without terrain.
 - Lockpicking skill can't be read from the API, so it's assumed to be at the level cap.
+- Cave detection needs explored map areas or a visit. A cave's explored-map area also covers the ground around its entrance, so a few "cave" spawns may sit just outside.
+- OpenMap compatibility follows from how OpenMap is described, not from its source code (see above).
 - Sharing sends only node type, zone and position, never in instances. Trial accounts can't send addon messages on Forever.
 - Written against the documented Mainline/Forever API and tested in a simulated client. **It has not been run in the live Forever client yet.** If anything errors, `/forage debug` plus the error text will pinpoint it.
 
@@ -167,9 +222,16 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `C_QuestLog.GetQuestsOnMap`, `GetQuestObjectives` | Questing mode | Ranked without detour ("No quest objectives found") |
 | `TooltipDataProcessor.AddTooltipPostCall` with `data.guid` | Mob tooltip | Fallback via `tooltip:GetUnit()` |
 | `C_Minimap.GetViewRadius`, `GetPlayerFacing` outside encounters | Minimap lines, arrow | Arrow shows "travel to zone"; lines hidden |
-| `WorldMapFrame:GetCanvas()`, `ScrollContainer:GetCanvasScale()`, `OnMapChanged` | World map overlay | Area/route not drawn on world map |
-| Templates `ButtonFrameTemplate`, `PanelTabButtonTemplate`, `UICheckButtonTemplate`, `InputBoxTemplate` | UI | Plain-frame fallbacks for the window and tabs |
-| Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-*` | Arrow, camp markers | Blank texture (cosmetic) |
+| `WorldMapFrame:GetCanvas()`, `ScrollContainer:GetCanvasScale()`, `OnMapChanged` | World map lines | Lines not drawn; numbered stops (HBD pins) and the map pin still show |
+| `HereBeDragons:TranslateZoneCoordinates` for Forever map IDs | Lines on continent/OpenMap views | Lines only on the zone map |
+| `OpenWorldMap(uiMapID)`, `WorldMapFrame:SetMapID` | Open map at farm | Map opens at your current zone |
+| `C_Map.SetUserWaypoint`, `UiMapPoint.CreateFromCoordinates`, `C_SuperTrack` | Game map pin on the farm | No pin (TomTom still works) |
+| `C_MapExplorationInfo.GetExploredAreaIDsAtPosition`, `C_Map.GetAreaInfo` | Cave/subzone names at spawn points | Caves only from your visits |
+| `IsIndoors`, `GetSubZoneText` | Cave learning | No learning; explored areas still used |
+| `C_Map.GetMapArtLayers`, `GetMapArtLayerTextures` | Zone map previews | "Map preview unavailable" (lines still drawn) |
+| OpenMap rendering HBD pins / map pins | OpenMap display | See `/forage diag` |
+| Template `UICheckButtonTemplate`, `BackdropTemplate` | UI | Checkboxes / panel backgrounds missing (cosmetic) |
+| Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, stops, search, close | Blank texture (cosmetic) |
 | `C_Item.GetItemIconByID` for Forever-only items | Pin icons | Herb/ore default icon |
 
 ## Credits & licence

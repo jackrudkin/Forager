@@ -79,6 +79,12 @@ function frameMethods:AddMessage(msg) table.insert(M.printed, msg) if M.verbose 
 function frameMethods:StartMoving() end
 function frameMethods:StopMovingOrSizing() end
 function frameMethods:GetNormalFontObject() return nil end
+function frameMethods:SetFontString(fs) self._fs = fs end
+function frameMethods:GetFontString() self._fs = self._fs or newObj("FontString", self) return self._fs end
+function frameMethods:GetThumbTexture() self._thumb = self._thumb or newObj("Texture", self) return self._thumb end
+function frameMethods:IsEnabled() return true end
+function frameMethods:GetStringWidth() return #(tostring(self._text or "")) * 6 end
+function frameMethods:SetMapID(id) M.worldMapID = id M.worldMapSetTo = id end
 
 function M.CreateFrame(kind, name, parent, template)
     if template and M.failTemplates and M.failTemplates[template] then error("template " .. template) end
@@ -239,6 +245,24 @@ function M.Install(env)
     G.PanelTemplates_TabResize = function() end
     G.ButtonFrameTemplate_HidePortrait = function() end
     G.ButtonFrameTemplate_HideButtonBar = function() end
+    -- 1.1.0 additions
+    G.C_Map.GetMapArtLayers = function() return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } } end
+    G.C_Map.GetMapArtLayerTextures = function() local t = {} for i = 1, 12 do t[i] = 100000 + i end return t end
+    M.areaNames = {}
+    G.C_Map.GetAreaInfo = function(id) return M.areaNames[id] end
+    G.C_Map.CanSetUserWaypointOnMap = function() return true end
+    G.C_Map.SetUserWaypoint = function(p) M.userWaypoint = p end
+    G.C_Map.ClearUserWaypoint = function() M.userWaypoint = nil end
+    G.UiMapPoint = { CreateFromCoordinates = function(map, x, y) return { uiMapID = map, x = x, y = y } end }
+    G.C_SuperTrack = { SetSuperTrackedUserWaypoint = function() end }
+    G.CreateVector2D = function(x, y) return { x = x, y = y, GetXY = function(v) return v.x, v.y end } end
+    M.exploredAt = function() return {} end
+    G.C_MapExplorationInfo = { GetExploredAreaIDsAtPosition = function(map, v) return M.exploredAt(map, v.x, v.y) end }
+    G.IsIndoors = function() return M.indoors or false end
+    G.GetSubZoneText = function() return M.subzone or "" end
+    G.UnitCanAttack = function() return true end
+    G.GetBuildInfo = function() return "1.60.1", "70999", "Nov 1 2026", 16001 end
+    G.OpenWorldMap = function(id) M.openedMap = id G.WorldMapFrame._shown = true M.worldMapID = id end
 end
 
 return M

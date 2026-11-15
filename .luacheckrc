@@ -19,4 +19,7 @@ read_globals = {
   "ButtonFrameTemplate_HidePortrait", "ButtonFrameTemplate_HideButtonBar", "StaticPopup_Show", "YES", "NO",
   "GetSpellInfo", "GetMinimapShape", "Auctionator", "AuctionTrends", "GatherMate2HerbDB", "GatherMate2MineDB",
   "GatherMate2FishDB", "GatherLiteSettings",
+  "C_MapExplorationInfo", "CreateVector2D", "IsIndoors", "GetSubZoneText", "UnitCanAttack", "GetBuildInfo",
+  "OpenWorldMap", "UiMapPoint", "C_SuperTrack", "TomTom", "HBD_PINS_WORLDMAP_SHOW_CONTINENT", "Mixin",
+  "BackdropTemplateMixin",
 }

@@ -11,7 +11,8 @@ local function tooltip(owner)
     local a = ns.Route.active
     if a then
         local r = a.result
-        GameTooltip:AddLine(string.format("%s in %s", ns.GoalByKey[r.goal].label, r.zoneName), 1, 1, 1)
+        GameTooltip:AddLine(string.format("%s in %s%s  ·  %s", ns.Finder:GoalInfo(r.goal).label, r.areaName and (r.areaName .. ", ") or "",
+            r.zoneName or "?", ns.Main:RateText(r)), 1, 1, 1)
     end
     if ns.Quests:IsActive() then
         local z1 = ns.Quests:Zones()
@@ -89,9 +90,12 @@ function Forager_OnAddonCompartmentLeave() GameTooltip:Hide() end
 -------------------------------------------------------------------------------
 local HELP = {
     "/forage - open/close the window",
-    "/forage start [goal] - best spot now (goals: herb ore skin fish cloth greens leather meat elemental lockbox gold)",
+    "/forage start [goal|item name] - best spot now (goals: herb ore skin fish cloth greens leather meat elemental lockbox gold)",
     "/forage stop - stop the route",
-    "/forage find | map | nodes | mobs | stats | settings - open a tab",
+    "/forage farm | mobs | route | nodes | stats | settings - open a tab",
+    "/forage map - open the world map at your farm spot",
+    "/forage caves - caves known in this zone",
+    "/forage diag - diagnostics (paste this when reporting a problem)",
     "/forage quest <zone name> | current | off - set questing zone",
     "/forage mode gold | skill - rank by gold/hour or skill-ups/hour",
     "/forage mob - print Forager lines for your target",
@@ -125,10 +129,27 @@ local function slash(msg)
     cmd = (cmd or ""):lower()
     if cmd == "" then ns.Main:Toggle()
     elseif cmd == "start" then
-        if rest ~= "" and ns.GoalByKey[rest:lower()] then ns.char.goal = rest:lower() end
+        if rest ~= "" then
+            if ns.GoalByKey[rest:lower()] then ns.char.goal = rest:lower()
+            else
+                local s = ns.Finder:Suggest(rest, 3)[1]
+                if s and s.kind ~= "mob" then ns.char.goal = s.key else ns:Print("Unknown goal or item: " .. rest) return end
+            end
+        end
         ns.Main:StartFarming()
     elseif cmd == "stop" then ns.Route:Stop()
-    elseif cmd == "find" or cmd == "map" or cmd == "nodes" or cmd == "mobs" or cmd == "stats" or cmd == "settings" then ns.Main:Toggle(cmd)
+    elseif cmd == "map" then ns.Overlay:OpenMapTo()
+    elseif cmd == "find" or cmd == "farm" or cmd == "route" or cmd == "nodes" or cmd == "mobs" or cmd == "stats" or cmd == "settings" then ns.Main:Toggle(cmd)
+    elseif cmd == "caves" then
+        local m = ns.Player:MapID()
+        local z = m and ns.Zones[m]
+        ns:Print(string.format("Caves in %s: %s", ns.Player:ZoneName(m), (z and z.caves and #z.caves > 0) and table.concat(z.caves, ", ") or "none listed"))
+        for _, c in ipairs(m and ns.Caves:List(m) or {}) do
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("  %s: %d cells walked, centre %.1f, %.1f", c.name, c.cells, c.x * 100, c.y * 100))
+        end
+        local cur = ns.Caves:PlayerCave()
+        if cur then DEFAULT_CHAT_FRAME:AddMessage("  You are in: " .. cur) end
+    elseif cmd == "diag" then ns.Diag()
     elseif cmd == "quest" then
         local r = rest:lower()
         if r == "off" or r == "" then ns.Quests:Set(nil, nil) ns:Print("Questing zone cleared - dedicated farming.")
@@ -168,6 +189,60 @@ local function slash(msg)
     end
 end
 
+-------------------------------------------------------------------------------
+-- diagnostics
+-------------------------------------------------------------------------------
+local function addonLoaded(pattern)
+    if not (C_AddOns and C_AddOns.GetNumAddOns) then return nil end
+    for i = 1, C_AddOns.GetNumAddOns() do
+        local name = C_AddOns.GetAddOnInfo(i)
+        if name and name:lower():find(pattern) and C_AddOns.IsAddOnLoaded(i) then return name end
+    end
+end
+
+function ns.Diag()
+    local HBD = LibStub("HereBeDragons-2.0")
+    local out = {}
+    local function add(k, v) out[#out + 1] = "  " .. k .. ": " .. tostring(v) end
+    local _, build, _, toc = GetBuildInfo()
+    add("Forager", ns.version .. " · client " .. tostring(build) .. " · toc " .. tostring(toc))
+    local m = ns.Player:MapID()
+    local x, y = ns.Player:Position(m)
+    add("Player map", tostring(m) .. " " .. ns.Player:ZoneName(m) .. (x and string.format(" (%.1f, %.1f)", x * 100, y * 100) or " (no position)"))
+    add("World map shown", WorldMapFrame and WorldMapFrame:IsShown() and ("yes, map " .. tostring(WorldMapFrame:GetMapID())) or "no")
+    local a = ns.Route.active
+    if a then
+        add("Active farm", string.format("%s · map %d · %d stops · %d yd · rect %s", a.result.goal, a.uiMap, #a.route.points, a.route.length or 0,
+            a.result.rect and "yes" or "no"))
+        local p = a.route.points[1]
+        if p and WorldMapFrame then
+            local tx, ty = HBD:TranslateZoneCoordinates(p.x, p.y, a.uiMap, WorldMapFrame:GetMapID() or a.uiMap, true)
+            add("Stop 1 on displayed map", tx and string.format("%.3f, %.3f", tx, ty) or "cannot translate (map not in HereBeDragons data)")
+        end
+        local wx = HBD:GetWorldCoordinatesFromZone(0.5, 0.5, a.uiMap)
+        add("Zone in HereBeDragons", wx and "yes" or "NO (route can't be drawn)")
+    else
+        add("Active farm", "none")
+    end
+    add("Preview", ns.Route.preview and "yes" or "no")
+    add("World map / minimap nodes", ns.settings.worldNodes .. " / " .. ns.settings.minimapNodes)
+    add("Explored-area API", (C_MapExplorationInfo and C_MapExplorationInfo.GetExploredAreaIDsAtPosition) and "yes" or "no")
+    if m then
+        local cave, name = ns.Caves:At(m, x or 0.5, y or 0.5)
+        add("Cave here", tostring(cave) .. (name and (" (" .. name .. ")") or "") .. " · area " .. tostring(x and ns.Caves:AreaName(m, x, y)))
+        add("Caves learned in zone", #ns.Caves:List(m))
+    end
+    add("Map art API", (C_Map.GetMapArtLayers and C_Map.GetMapArtLayerTextures) and "yes" or "no")
+    add("OpenMap", addonLoaded("openmap") or "not loaded")
+    add("TomTom", TomTom and "loaded" or "not loaded")
+    add("Prices", table.concat(ns.Prices:Available(), ", "))
+    add("Database", ns.DS:HasBundled() and (ns.DS:CountBundledNodes() .. " spawn points") or "NOT LOADED")
+    add("Last draw error", ns.Overlay.lastError or "none")
+    add("Backup", ns:BackupStatus())
+    ns:Print("diagnostics:")
+    for _, l in ipairs(out) do DEFAULT_CHAT_FRAME:AddMessage(l) end
+end
+
 SLASH_FORAGER1, SLASH_FORAGER2 = "/forage", "/forager"
 SlashCmdList.FORAGER = slash
 ns.Slash = slash
@@ -181,6 +256,7 @@ ns:On("PLAYER_LOGIN", function()
     ns.DS:Load()
     ns.Capture:Init()
     ns.Comms:Init()
+    ns.Caves:Init()
     ns.Pins:Init()
     ns.Overlay:Init()
     ns.Tooltip:Init()

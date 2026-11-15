@@ -347,7 +347,7 @@ for area in loot['fishing_loot_template']:
         continue
     ip, qp, ex, gw = evaluate('fishing_loot_template', area)
     lst = sorted(((it, p) for it, p in ex.items() if p >= 0.01), key=lambda t: -t[1])[:8]
-    sk = fish_skill.get(area, 0)
+    sk = max(0, fish_skill.get(area, 0) or 0)
     cur = fishing.get(m)
     if cur is None or area == m or sk > cur[0]:
         fishing[m] = (sk, lst)
@@ -369,14 +369,26 @@ with open(os.path.join(OUT_CORE, 'NodeTypes.lua'), 'w') as f:
                    'true' if t['forever'] else 'false', y, objs))
     f.write('}\n')
 
+# cave / mine names per zone from QuestieDB's area table comments (names only; positions are learned in game)
+CAVE_RE = re.compile(r'\b(Mine|Mines|Cave|Caves|Cavern|Caverns|Grotto|Den|Barrow|Burrow|Burrows|Hollow|Lair|Tunnel|Tunnels|Quarry|Excavation|Dig Site)\b', re.I)
+caves = collections.defaultdict(set)
+for a, u, c in re.findall(r'\[(\d+)\] = (\d+), -- (.*)', src):
+    u = int(u)
+    if u not in ZONES or '->' not in c:
+        continue
+    name = c.split('->')[0].strip()
+    if CAVE_RE.search(name) and 'unused' not in name.lower() and not name.lower().startswith('not used'):
+        caves[u].add(name)
+
 with open(os.path.join(OUT_CORE, 'Zones.lua'), 'w') as f:
     f.write(HEADER + 'local _, ns = ...\n')
-    f.write('-- uiMapID = { name, minLevel, maxLevel, faction (A/H/C contested/S sanctuary), continent (K/E/I) }\n')
+    f.write('-- uiMapID = { name, minLevel, maxLevel, faction (A/H/C contested/S sanctuary), continent (K/E/I), fishSkill, caves (names) }\n')
     f.write('ns.Zones = {\n')
     for m, (n, lo, hi, fa, co) in sorted(ZONES.items()):
         fsk = fishing.get(m, (0, []))[0]
-        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d },\n'
-                % (m, lua_str(n), lo, hi, fa, co, fsk))
+        cv = ', '.join(lua_str(x) for x in sorted(caves.get(m, [])))
+        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d, caves = { %s } },\n'
+                % (m, lua_str(n), lo, hi, fa, co, fsk, cv))
     f.write('}\n')
 
 # ---------------------------------------------------------------- write data addon

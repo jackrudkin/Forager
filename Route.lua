@@ -102,6 +102,7 @@ function Route:Start(result)
     if not result then return end
     local route = result.route
     if not route or #route.points == 0 then
+        Route.preview = nil
         Route.active = { result = result, route = route or { points = {} }, uiMap = result.uiMap, index = 1, loops = 0, visited = 0 }
         ns:Fire("FORAGER_ROUTE_CHANGED")
         return
@@ -116,6 +117,7 @@ function Route:Start(result)
             if not bd or d < bd then bd, start = d, i end
         end
     end
+    Route.preview = nil
     Route.active = { result = result, route = route, uiMap = result.uiMap, index = start, loops = 0, visited = 0, startIndex = start }
     ns:Fire("FORAGER_ROUTE_CHANGED")
 end
@@ -123,6 +125,18 @@ end
 function Route:Stop()
     Route.active = nil
     ns:Fire("FORAGER_ROUTE_CHANGED")
+end
+
+--- Show a result on the maps without starting it ("Show on map"). nil clears.
+function Route:Preview(result)
+    if result and Route.active and Route.active.result == result then result = nil end
+    Route.preview = result and { result = result, route = result.route or { points = {} }, uiMap = result.uiMap, preview = true } or nil
+    ns:Fire("FORAGER_ROUTE_CHANGED")
+end
+
+--- What the maps should draw: the preview if one is set, otherwise the active farm.
+function Route:Shown()
+    return Route.preview or Route.active
 end
 
 --- Current waypoint, distance (yd), progress 0-1, loops completed.

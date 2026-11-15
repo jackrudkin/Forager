@@ -104,3 +104,35 @@ for _, g in ipairs(ns.Goals) do ns.GoalByKey[g.key] = g end
 
 -- Travel speed presets in yards/second.
 ns.Speeds = { run = 7, mount60 = 11.2, mount100 = 14 }
+
+-- Short labels for the category chips.
+do
+    local short = { herb = "Herbs", ore = "Ore", skin = "Skinning", fish = "Fishing", cloth = "Cloth", greens = "Greens (DE)",
+        leather = "Leather", meat = "Meat", elemental = "Elemental", lockbox = "Lockboxes", gold = "Raw gold" }
+    for _, g in ipairs(ns.Goals) do g.short = short[g.key] or g.label end
+end
+
+-- Location filter for the finder and the Mobs tab.
+ns.Locations = {
+    { key = "any", label = "Anywhere" },
+    { key = "cave", label = "Caves & mines" },
+    { key = "outdoor", label = "Outdoors" },
+}
+-- Words that mark a subzone as a cave/mine (English client; zone cave lists come from the data).
+ns.CaveKeywords = { "mine", "cave", "cavern", "grotto", "den", "barrow", "burrow", "hollow", "lair", "tunnel", "quarry", "dig site", "excavation" }
+
+-- UI theme
+ns.Theme = {
+    bg = { 0.055, 0.055, 0.065, 0.97 },
+    panel = { 0.09, 0.09, 0.105, 1 },
+    panel2 = { 0.12, 0.12, 0.14, 1 },
+    border = { 0.22, 0.22, 0.26, 1 },
+    accent = { 0.50, 0.83, 0.42, 1 },
+    accentDark = { 0.22, 0.42, 0.20, 1 },
+    gold = { 1, 0.82, 0, 1 },
+    text = { 0.92, 0.92, 0.92, 1 },
+    muted = { 0.60, 0.60, 0.64, 1 },
+    cave = { 0.62, 0.48, 0.95, 1 },
+    route = { 0.20, 0.85, 1.00, 1 },
+    area = { 1.00, 0.82, 0.00, 1 },
+}

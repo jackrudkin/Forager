@@ -2,7 +2,7 @@
 local _, ns = ...
 local UI, Main = ns.UI, ns.Main
 
-Main:RegisterTab("nodes", "Nodes", function(panel)
+Main:RegisterTab("nodes", "Nodes", "Interface\\Icons\\INV_Ore_Copper_01", function(panel)
     local zone
     local zl = UI.Label(panel, "Zone", "GameFontNormalSmall")
     zl:SetPoint("TOPLEFT", 2, -4)

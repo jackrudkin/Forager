@@ -3,7 +3,7 @@ local _, ns = ...
 local UI, Main = ns.UI, ns.Main
 local DS = ns.DS
 
-Main:RegisterTab("stats", "Stats", function(panel)
+Main:RegisterTab("stats", "Stats", "Interface\\Icons\\INV_Misc_Coin_02", function(panel)
     local sess = UI.Label(panel, "", "GameFontHighlight")
     sess:SetPoint("TOPLEFT", 2, -4)
     sess:SetWidth(420)
@@ -13,21 +13,21 @@ Main:RegisterTab("stats", "Stats", function(panel)
     reset:SetPoint("TOPLEFT", 2, -70)
 
     local itemCols = {
-        { key = "name", label = "Item gathered/looted", width = 200, get = function(r) return DS:ColoredItem(r.id) end, sort = function(r) return DS:ItemName(r.id) end },
-        { key = "n", label = "Total", width = 60, align = "RIGHT", get = function(r) return r.n end, sort = function(r) return r.n end },
-        { key = "s", label = "Session", width = 60, align = "RIGHT", get = function(r) return r.s > 0 and r.s or "-" end, sort = function(r) return r.s end },
-        { key = "v", label = "Value", width = 80, align = "RIGHT", get = function(r) return ns.Money(r.v, true) end, sort = function(r) return r.v end },
+        { key = "name", label = "Item gathered/looted", width = 170, get = function(r) return DS:ColoredItem(r.id) end, sort = function(r) return DS:ItemName(r.id) end },
+        { key = "n", label = "Total", width = 50, align = "RIGHT", get = function(r) return r.n end, sort = function(r) return r.n end },
+        { key = "s", label = "Session", width = 56, align = "RIGHT", get = function(r) return r.s > 0 and r.s or "-" end, sort = function(r) return r.s end },
+        { key = "v", label = "Value", width = 74, align = "RIGHT", get = function(r) return ns.Money(r.v, true) end, sort = function(r) return r.v end },
     }
     local items = UI.Table(panel, itemCols, 15)
     items:SetPoint("TOPLEFT", 0, -100)
     items.sortKey = "v"
 
     local sessCols = {
-        { key = "d", label = "Session", width = 100, get = function(r) return date("%d %b %H:%M", r.start) end, sort = function(r) return r.start end },
-        { key = "t", label = "Time", width = 60, align = "RIGHT", get = function(r) return string.format("%dm", r.secs / 60) end, sort = function(r) return r.secs end },
-        { key = "v", label = "Value", width = 70, align = "RIGHT", get = function(r) return ns.Money(r.value, true) end, sort = function(r) return r.value end },
-        { key = "h", label = "Per hour", width = 70, align = "RIGHT", get = function(r) return ns.Money(r.perHour, true) end, sort = function(r) return r.perHour end },
-        { key = "z", label = "Zone", width = 110, get = function(r) return r.zone and ns.Player:ZoneName(r.zone) or "-" end },
+        { key = "d", label = "Session", width = 96, get = function(r) return date("%d %b %H:%M", r.start) end, sort = function(r) return r.start end },
+        { key = "t", label = "Time", width = 50, align = "RIGHT", get = function(r) return string.format("%dm", r.secs / 60) end, sort = function(r) return r.secs end },
+        { key = "v", label = "Value", width = 66, align = "RIGHT", get = function(r) return ns.Money(r.value, true) end, sort = function(r) return r.value end },
+        { key = "h", label = "Per hour", width = 66, align = "RIGHT", get = function(r) return ns.Money(r.perHour, true) end, sort = function(r) return r.perHour end },
+        { key = "z", label = "Zone", width = 96, get = function(r) return r.zone and ns.Player:ZoneName(r.zone) or "-" end },
     }
     local sessions = UI.Table(panel, sessCols, 9)
     sessions:SetPoint("TOPLEFT", items, "TOPRIGHT", 14, 0)

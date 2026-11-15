@@ -1,18 +1,19 @@
--- Main window: header (goal, mode, Start farming, questing zone) + tabs.
+-- Main window: title bar, sidebar navigation, "now farming" card, content area and status bar.
 local _, ns = ...
 local UI = ns.UI
+local T = ns.Theme
 local Main = {}
 ns.Main = Main
 Main.tabs = {}
 
-local W, H = 900, 610
+local W, H, SIDE = 1000, 640, 164
 
 local function zoneItems(includeOff, includeAuto)
     local items = {}
-    if includeOff then items[#items + 1] = { text = "|cff9d9d9dOff (dedicated farming)|r", value = false } end
-    if includeAuto then items[#items + 1] = { text = "Auto: current zone", value = "auto" } end
+    if includeOff then items[#items + 1] = { text = "|cff9d9d9dEverywhere (my level)|r", value = false } end
+    if includeAuto then items[#items + 1] = { text = "Current zone (follows me)", value = "auto" } end
     local list = {}
-    for id, z in pairs(ns.Zones) do list[#list + 1] = { id = id, z = z } end
+    for id, z in pairs(ns.Zones) do if z.faction ~= "S" then list[#list + 1] = { id = id, z = z } end end
     table.sort(list, function(a, b) if a.z.min ~= b.z.min then return a.z.min < b.z.min end return a.z.name < b.z.name end)
     for _, e in ipairs(list) do
         items[#items + 1] = { text = string.format("%s |cff9d9d9d(%d-%d)|r", e.z.name, e.z.min, e.z.max), value = e.id }
@@ -21,215 +22,272 @@ local function zoneItems(includeOff, includeAuto)
 end
 Main.ZoneItems = zoneItems
 
-function Main:RegisterTab(key, label, build)
-    self.tabs[#self.tabs + 1] = { key = key, label = label, build = build }
+function Main:RegisterTab(key, label, icon, build)
+    self.tabs[#self.tabs + 1] = { key = key, label = label, icon = icon, build = build }
+end
+
+function Main:RateText(r)
+    if not r then return "" end
+    if r.mode == "skill" then return string.format("%.0f skill-ups/h", r.perHour) end
+    if ns.Finder.last and ns.Finder.last.byUnits and r.itemUnits then return string.format("%.0f /h", r.itemUnits) end
+    return ns.Money(r.perHour, true) .. "/h"
+end
+
+local function charLine()
+    local P = ns.Player
+    local parts = { "Level " .. P:Level() }
+    local names = { herb = "Herbalism", ore = "Mining", skin = "Skinning", fish = "Fishing", lock = "Lockpicking" }
+    for _, k in ipairs({ "herb", "ore", "skin", "fish", "lock" }) do
+        local s = P.skills[k]
+        if s then parts[#parts + 1] = names[k] .. " " .. s.rank end
+    end
+    return table.concat(parts, "  ·  ")
 end
 
 function Main:Create()
     if self.frame then return self.frame end
-    local ok, f = pcall(CreateFrame, "Frame", "ForagerMainFrame", UIParent, "ButtonFrameTemplate")
-    if not ok or not f then
-        f = CreateFrame("Frame", "ForagerMainFrame", UIParent, "BackdropTemplate")
-        f:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 32, insets = { left = 11, right = 12, top = 12, bottom = 11 } })
-        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-        close:SetPoint("TOPRIGHT", -4, -4)
-    end
+    local f = CreateFrame("Frame", "ForagerMainFrame", UIParent, "BackdropTemplate")
     self.frame = f
+    UI.Skin(f, T.bg, T.border)
     f:SetSize(W, H)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
+    f:SetToplevel(true)
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:SetClampedToScreen(true)
-    if ButtonFrameTemplate_HidePortrait then pcall(ButtonFrameTemplate_HidePortrait, f) end
-    if ButtonFrameTemplate_HideButtonBar then pcall(ButtonFrameTemplate_HideButtonBar, f) end
-    if f.SetTitle then f:SetTitle("Forager") elseif f.TitleText then f.TitleText:SetText("Forager") end
-    if f.Inset then f.Inset:Hide() end
     tinsert(UISpecialFrames, "ForagerMainFrame")
     f:Hide()
 
-    -- header -------------------------------------------------------------
-    local hdr = CreateFrame("Frame", nil, f)
-    hdr:SetPoint("TOPLEFT", 14, -28)
-    hdr:SetPoint("TOPRIGHT", -14, -28)
-    hdr:SetHeight(80)
-    self.header = hdr
+    -- title bar ------------------------------------------------------------
+    local title = CreateFrame("Frame", nil, f)
+    title:SetPoint("TOPLEFT", 1, -1)
+    title:SetPoint("TOPRIGHT", -1, -1)
+    title:SetHeight(40)
+    local tbg = title:CreateTexture(nil, "BACKGROUND")
+    tbg:SetAllPoints()
+    tbg:SetColorTexture(T.panel[1], T.panel[2], T.panel[3], 1)
+    local line = title:CreateTexture(nil, "BORDER")
+    line:SetPoint("BOTTOMLEFT")
+    line:SetPoint("BOTTOMRIGHT")
+    line:SetHeight(1)
+    line:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    local icon = title:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(26, 26)
+    icon:SetPoint("LEFT", 10, 0)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Herb_07")
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local name = title:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    name:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    name:SetText("Forager")
+    name:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
+    local ver = UI.Muted(title, "v" .. (ns.version or "?"))
+    ver:SetPoint("BOTTOMLEFT", name, "BOTTOMRIGHT", 6, 1)
+    self.charLine = UI.Muted(title, "")
+    self.charLine:SetPoint("LEFT", ver, "RIGHT", 16, 0)
+    local close = UI.IconButton(title, "Interface\\FriendsFrame\\ClearBroadcastIcon", 16, function() f:Hide() end, "Close")
+    close:SetPoint("RIGHT", -12, 0)
 
-    local goalLbl = UI.Label(hdr, "Goal", "GameFontNormalSmall")
-    goalLbl:SetPoint("TOPLEFT", 2, -2)
-    local goalItems = function()
-        local out = {}
-        for _, g in ipairs(ns.Goals) do out[#out + 1] = { text = "|T" .. g.icon .. ":14|t " .. g.label, value = g.key } end
-        return out
+    -- sidebar ----------------------------------------------------------------
+    local side = CreateFrame("Frame", nil, f)
+    side:SetPoint("TOPLEFT", 1, -41)
+    side:SetPoint("BOTTOMLEFT", 1, 25)
+    side:SetWidth(SIDE)
+    local sbg = side:CreateTexture(nil, "BACKGROUND")
+    sbg:SetAllPoints()
+    sbg:SetColorTexture(T.panel[1], T.panel[2], T.panel[3], 0.6)
+    local sline = side:CreateTexture(nil, "BORDER")
+    sline:SetPoint("TOPRIGHT")
+    sline:SetPoint("BOTTOMRIGHT")
+    sline:SetWidth(1)
+    sline:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    self.side = side
+
+    self.navButtons = {}
+    for i, tab in ipairs(self.tabs) do
+        local b = CreateFrame("Button", nil, side)
+        b:SetSize(SIDE - 1, 34)
+        b:SetPoint("TOPLEFT", 0, -8 - (i - 1) * 36)
+        b.bg = b:CreateTexture(nil, "BACKGROUND")
+        b.bg:SetAllPoints()
+        b.bar = b:CreateTexture(nil, "BORDER")
+        b.bar:SetPoint("TOPLEFT")
+        b.bar:SetPoint("BOTTOMLEFT")
+        b.bar:SetWidth(3)
+        b.bar:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetSize(20, 20)
+        b.icon:SetPoint("LEFT", 14, 0)
+        b.icon:SetTexture(tab.icon)
+        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        b.text:SetPoint("LEFT", b.icon, "RIGHT", 10, 0)
+        b.text:SetText(tab.label)
+        b:SetScript("OnEnter", function(self) if Main.selected ~= i then self.bg:SetColorTexture(1, 1, 1, 0.04) end end)
+        b:SetScript("OnLeave", function(self) if Main.selected ~= i then self.bg:SetColorTexture(0, 0, 0, 0) end end)
+        b:SetScript("OnClick", function() Main:SelectTab(i) end)
+        self.navButtons[i] = b
     end
-    self.goalDD = UI.Dropdown(hdr, 190, goalItems, function() return Main:Goal() end, function(v)
-        ns.char.goal = v
-        ns:Fire("FORAGER_GOAL_CHANGED")
-    end)
-    self.goalDD:SetPoint("TOPLEFT", goalLbl, "BOTTOMLEFT", 0, -2)
 
-    local modeLbl = UI.Label(hdr, "Rank by", "GameFontNormalSmall")
-    modeLbl:SetPoint("LEFT", goalLbl, "LEFT", 200, 0)
-    self.modeDD = UI.Dropdown(hdr, 130, function()
-        return { { text = "Gold / hour", value = "gold" }, { text = "Skill-ups / hour", value = "skill" } }
-    end, function() return ns.settings.mode end, function(v)
-        ns.settings.mode = v
-        ns:Fire("FORAGER_GOAL_CHANGED")
-    end)
-    self.modeDD:SetPoint("TOPLEFT", modeLbl, "BOTTOMLEFT", 0, -2)
+    -- now farming card (bottom of sidebar)
+    local card = UI.Panel(side, T.panel2, T.border)
+    card:SetPoint("BOTTOMLEFT", 8, 8)
+    card:SetPoint("BOTTOMRIGHT", -9, 8)
+    card:SetHeight(108)
+    local ch = UI.Muted(card, "NOW FARMING", "GameFontNormalSmall")
+    ch:SetPoint("TOPLEFT", 8, -7)
+    card.icon = card:CreateTexture(nil, "ARTWORK")
+    card.icon:SetSize(22, 22)
+    card.icon:SetPoint("TOPLEFT", 8, -24)
+    card.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    card.goal = UI.Label(card, "", "GameFontNormalSmall")
+    card.goal:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 6, 0)
+    card.goal:SetPoint("RIGHT", -6, 0)
+    card.goal:SetWordWrap(false)
+    card.zone = UI.Label(card, "", "GameFontHighlightSmall")
+    card.zone:SetPoint("TOPLEFT", card.goal, "BOTTOMLEFT", 0, -2)
+    card.zone:SetPoint("RIGHT", -6, 0)
+    card.zone:SetWordWrap(false)
+    card.rate = UI.Label(card, "", "GameFontHighlightSmall")
+    card.rate:SetPoint("TOPLEFT", 8, -52)
+    card.rate:SetPoint("RIGHT", -6, 0)
+    card.map = UI.Button(card, "Map", 66, function() ns.Overlay:OpenMapTo() end)
+    card.map:SetPoint("BOTTOMLEFT", 6, 6)
+    card.stop = UI.Button(card, "Stop", 66, function() ns.Route:Stop() end)
+    card.stop:SetPoint("BOTTOMRIGHT", -6, 6)
+    card.idle = UI.Muted(card, "Pick something in Farm and press Start farming, or right-click the minimap button.")
+    card.idle:SetPoint("TOPLEFT", 8, -24)
+    card.idle:SetPoint("RIGHT", -8, 0)
+    card.idle:SetJustifyV("TOP")
+    self.card = card
 
-    local start = CreateFrame("Button", nil, hdr, "UIPanelButtonTemplate")
-    start:SetSize(150, 36)
-    start:SetPoint("LEFT", self.modeDD, "RIGHT", 14, 6)
-    start:SetText("Start farming")
-    start:SetNormalFontObject("GameFontNormalLarge")
-    start:SetHighlightFontObject("GameFontHighlightLarge")
-    start:SetScript("OnClick", function() Main:StartFarming() end)
-    start:SetScript("OnEnter", function(self)
-        UI.Tip(self, "Start farming", { "Picks the best spot for your goal, skill, level and faction (inside your questing zone if one is set), draws the area and route on both maps and shows the next-waypoint arrow." })
-    end)
-    start:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    self.startBtn = start
-    local stop = UI.Button(hdr, "Stop", 60, function() ns.Route:Stop() Main:UpdateStatus() end)
-    stop:SetPoint("LEFT", start, "RIGHT", 6, 0)
-
-    local qLbl = UI.Label(hdr, "Questing zone:", "GameFontNormal")
-    qLbl:SetPoint("TOPLEFT", 2, -60)
-    self.questDD = UI.Dropdown(hdr, 190, function() return zoneItems(true, true) end,
-        function() return ns.char.questZone or false end,
-        function(v) ns.Quests:Set(v or nil, ns.char.questZone2) end)
-    self.questDD:SetPoint("LEFT", qLbl, "RIGHT", 6, 0)
-    local cur = UI.Button(hdr, "Use current zone", 120, function()
-        local m = ns.Player:MapID()
-        if m and ns.Zones[m] then ns.Quests:Set(m, ns.char.questZone2) else ns:Print("Current zone is not a farming zone.") end
-    end)
-    cur:SetPoint("LEFT", self.questDD, "RIGHT", 4, 0)
-    local clear = UI.Button(hdr, "X", 24, function() ns.Quests:Set(nil, nil) end)
-    clear:SetPoint("LEFT", cur, "RIGHT", 2, 0)
-    clear:SetScript("OnEnter", function(self) UI.Tip(self, "Clear questing zone", { "Back to dedicated farming (best anywhere)." }) end)
-    clear:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    local q2Lbl = UI.Label(hdr, "Next hub (optional):", "GameFontNormalSmall")
-    q2Lbl:SetPoint("LEFT", clear, "RIGHT", 14, 0)
-    self.quest2DD = UI.Dropdown(hdr, 180, function() return zoneItems(true, false) end,
-        function() return ns.char.questZone2 or false end,
-        function(v) ns.Quests:Set(ns.char.questZone, v or nil) end)
-    self.quest2DD:SetPoint("LEFT", q2Lbl, "RIGHT", 6, 0)
-    self.quest2DD:SetScript("OnEnter", function(self) UI.Tip(self, "Second questing zone", { "Optional: the zone of your next quest hub. Spots there are ranked too." }) end)
-    self.quest2DD:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    -- status line
-    local status = UI.Label(f, "", "GameFontHighlightSmall")
-    status:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 2, -2)
-    status:SetPoint("RIGHT", hdr, "RIGHT", 0, 0)
-    status:SetHeight(16)
-    self.status = status
-
-    -- content + tabs -------------------------------------------------------
+    -- content + status ---------------------------------------------------------
     local content = CreateFrame("Frame", nil, f)
-    content:SetPoint("TOPLEFT", 14, -132)
-    content:SetPoint("BOTTOMRIGHT", -14, 14)
+    content:SetPoint("TOPLEFT", SIDE + 14, -52)
+    content:SetPoint("BOTTOMRIGHT", -14, 34)
     self.content = content
 
-    self.tabButtons = {}
-    for i, tab in ipairs(self.tabs) do
-        local okT, b = pcall(CreateFrame, "Button", "ForagerMainFrameTab" .. i, f, "PanelTabButtonTemplate")
-        if not okT or not b then b = CreateFrame("Button", "ForagerMainFrameTab" .. i, f, "UIPanelButtonTemplate") b:SetSize(100, 24) end
-        b:SetText(tab.label)
-        b:SetID(i)
-        if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, b, 0) end
-        if i == 1 then b:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 12, 2) else b:SetPoint("LEFT", self.tabButtons[i - 1], "RIGHT", -14, 0) end
-        b:SetScript("OnClick", function() Main:SelectTab(i) end)
-        self.tabButtons[i] = b
+    local status = CreateFrame("Frame", nil, f)
+    status:SetPoint("BOTTOMLEFT", 1, 1)
+    status:SetPoint("BOTTOMRIGHT", -1, 1)
+    status:SetHeight(24)
+    local stbg = status:CreateTexture(nil, "BACKGROUND")
+    stbg:SetAllPoints()
+    stbg:SetColorTexture(T.panel[1], T.panel[2], T.panel[3], 1)
+    local stl = status:CreateTexture(nil, "BORDER")
+    stl:SetPoint("TOPLEFT")
+    stl:SetPoint("TOPRIGHT")
+    stl:SetHeight(1)
+    stl:SetColorTexture(T.border[1], T.border[2], T.border[3], 1)
+    self.status = UI.Muted(status, "")
+    self.status:SetPoint("LEFT", 10, 0)
+    self.status:SetPoint("RIGHT", -10, 0)
+    self.status:SetWordWrap(false)
+
+    for _, tab in ipairs(self.tabs) do
         local panel = CreateFrame("Frame", nil, content)
         panel:SetAllPoints()
         panel:Hide()
         tab.panel = panel
     end
-    f.numTabs = #self.tabs
-    f.Tabs = self.tabButtons
-    if PanelTemplates_SetNumTabs then pcall(PanelTemplates_SetNumTabs, f, #self.tabs) end
 
-    ns:On("FORAGER_QUESTZONE_CHANGED", function() Main:RefreshHeader() end)
+    ns:On("FORAGER_QUESTZONE_CHANGED", function() Main:UpdateStatus() end)
     ns:On("FORAGER_ROUTE_CHANGED", function() Main:UpdateStatus() end)
     ns:On("FORAGER_ROUTE_PROGRESS", function() Main:UpdateStatus() end)
     ns:On("FORAGER_SESSION_UPDATE", function() if f:IsShown() then Main:UpdateStatus() end end)
-    f:SetScript("OnShow", function() Main:RefreshHeader() Main:UpdateStatus() end)
+    ns:On("SKILL_LINES_CHANGED", function() if f:IsShown() then self.charLine:SetText(charLine()) end end)
+    f:SetScript("OnShow", function() self.charLine:SetText(charLine()) Main:UpdateStatus() end)
     self:SelectTab(1)
     return f
 end
 
 function Main:SelectTab(i)
     for j, tab in ipairs(self.tabs) do
+        local b = self.navButtons[j]
         if j == i then
-            if not tab.built then tab.build(tab.panel) tab.built = true end
+            if not tab.built then
+                local ok, err = pcall(tab.build, tab.panel)
+                if not ok then ns:Print("UI error in " .. tab.label .. ": " .. tostring(err)) end
+                tab.built = true
+            end
             tab.panel:Show()
             if tab.panel.OnActivate then tab.panel:OnActivate() end
+            b.bg:SetColorTexture(1, 1, 1, 0.06)
+            b.bar:Show()
+            b.text:SetTextColor(1, 1, 1)
         else
             tab.panel:Hide()
+            b.bg:SetColorTexture(0, 0, 0, 0)
+            b.bar:Hide()
+            b.text:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
         end
     end
     self.selected = i
-    if PanelTemplates_SetTab then pcall(PanelTemplates_SetTab, self.frame, i) end
 end
 
 function Main:SelectTabByKey(key)
+    if key == "find" then key = "farm" elseif key == "map" then key = "route" end
     for i, t in ipairs(self.tabs) do if t.key == key then self:SelectTab(i) return end end
 end
 
 function Main:Goal() return ns.char.goal or ns.Finder:DefaultGoal() end
 
-function Main:RefreshHeader()
-    if not self.frame then return end
-    self.goalDD:Refresh()
-    self.modeDD:Refresh()
-    self.questDD:Refresh()
-    self.quest2DD:Refresh()
-    self:UpdateStatus()
-end
-
 function Main:UpdateStatus()
-    if not self.status then return end
+    if not self.frame then return end
+    -- now farming card
+    local card, a = self.card, ns.Route.active
+    if a then
+        local r = a.result
+        local g = ns.Finder:GoalInfo(r.goal)
+        card.icon:SetTexture(g.icon)
+        card.goal:SetText(g.short or g.label)
+        card.zone:SetText((r.areaName and (r.areaName .. ", ") or "") .. (r.zoneName or ""))
+        local _, _, _, loops = ns.Route:Next()
+        card.rate:SetText(string.format("|cffffd100%s|r  ·  loop %d", Main:RateText(r), (loops or 0) + 1))
+        for _, w in ipairs({ card.icon, card.goal, card.zone, card.rate, card.map, card.stop }) do w:Show() end
+        card.idle:Hide()
+    else
+        for _, w in ipairs({ card.icon, card.goal, card.zone, card.rate, card.map, card.stop }) do w:Hide() end
+        card.idle:Show()
+    end
+    -- status bar
     local parts = {}
     if ns.Quests:IsActive() then
         local z1, z2 = ns.Quests:Zones()
-        local txt = "|cffffd100Questing in:|r " .. (z1 and ns.Player:ZoneName(z1) or "?")
-        if ns.char.questZone == "auto" then txt = txt .. " |cff9d9d9d(auto)|r" end
-        if z2 then txt = txt .. " → " .. ns.Player:ZoneName(z2) end
+        local txt = "Questing in |cffffffff" .. (z1 and ns.Player:ZoneName(z1) or "?") .. "|r"
+        if ns.char.questZone == "auto" then txt = txt .. " (follows you)" end
+        if z2 then txt = txt .. " → |cffffffff" .. ns.Player:ZoneName(z2) .. "|r" end
         parts[#parts + 1] = txt
     else
-        parts[#parts + 1] = "|cff9d9d9dDedicated farming (best anywhere)|r"
+        parts[#parts + 1] = "Searching everywhere for your level"
     end
-    local a = ns.Route.active
-    if a then
-        local r = a.result
-        local rate = r.mode == "skill" and string.format("%.0f skill-ups/h", r.perHour) or (ns.Money(r.perHour, true) .. "/h")
-        parts[#parts + 1] = string.format("|cff7fd36bFarming:|r %s · %s · %s", ns.GoalByKey[r.goal].label, r.zoneName or "?", rate)
-    end
-    local perHour = ns.Capture:SessionPerHour()
     if ns.Capture.session.start then
-        parts[#parts + 1] = string.format("Session: %s (%s/h)", ns.Money(ns.Capture.session.value), ns.Money(perHour, true))
+        parts[#parts + 1] = string.format("Session |cffffffff%s|r (%s/h)", ns.Money(ns.Capture.session.value, true), ns.Money(ns.Capture:SessionPerHour(), true))
     end
-    if ns.safeMode then parts[#parts + 1] = "|cffff4040SAFE MODE|r" end
-    self.status:SetText(table.concat(parts, "   |cff555555|||r   "))
+    parts[#parts + 1] = "Prices: " .. table.concat(ns.Prices:Available(), " > ")
+    if ns.safeMode then parts[#parts + 1] = "|cffff4040SAFE MODE: " .. ns.safeMode .. "|r" end
+    self.status:SetText(table.concat(parts, "    ·    "))
 end
 
-function Main:StartFarming()
-    local goal = self:Goal()
+function Main:StartFarming(goal)
+    goal = goal or self:Goal()
     local best, all = ns.Finder:Best(goal, ns.settings.mode)
+    local label = ns.Finder:GoalInfo(goal).label
     if not best then
-        ns:Print("No spot found for " .. ns.GoalByKey[goal].label .. " with your current skill/level" ..
-            (ns.Quests:IsActive() and " in your questing zone. Clear it (X) to search everywhere." or "."))
+        local why = ""
+        if ns.settings.location == "cave" then why = " in caves (caves fill in as you explore; set Location to Anywhere)"
+        elseif ns.Quests:IsActive() then why = " in your questing zone (set Search in: Everywhere)" end
+        ns:Print("No spot found for " .. label .. " with your current skill/level" .. why .. ".")
         return
     end
     ns.Route:Start(best)
-    local rate = best.mode == "skill" and string.format("%.0f skill-ups/h", best.perHour) or (ns.Money(best.perHour, true) .. "/h")
-    ns:Print(string.format("Farming %s in |cffffffff%s|r: ~%s. Follow the arrow; route drawn on map and minimap.", ns.GoalByKey[goal].label, best.zoneName, rate))
+    ns:Print(string.format("Farming %s in |cffffffff%s%s|r: ~%s. Follow the arrow; area and route are on the map and minimap.",
+        label, best.areaName and (best.areaName .. ", ") or "", best.zoneName, Main:RateText(best)))
     if self.frame and self.frame:IsShown() then
-        self:SelectTabByKey("find")
+        self:SelectTabByKey("farm")
         ns:Fire("FORAGER_SHOW_RESULTS", all, best)
     end
 end

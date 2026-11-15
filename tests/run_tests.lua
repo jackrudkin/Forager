@@ -21,12 +21,19 @@ function HBD:GetZoneSize(map) return 4000, 2666 end
 function HBD:GetWorldCoordinatesFromZone(x, y, map) return x * 4000, y * 2666, 0 end
 function HBD:GetPlayerWorldPosition() return M.pos[1] * 4000, M.pos[2] * 2666, 0 end
 function HBD:GetWorldVector(i, x1, y1, x2, y2) local dx, dy = x2 - x1, y2 - y1 return math.atan2(dx, dy), math.sqrt(dx * dx + dy * dy) end
+-- continent 1415 contains the zones at a quarter scale; other zones are unrelated
+function HBD:TranslateZoneCoordinates(x, y, o, d)
+    if o == d then return x, y end
+    if d == 1415 then return 0.5 + x / 4, 0.5 + y / 4 end
+    return nil
+end
 local Pins = LibStub:NewLibrary("HereBeDragons-Pins-2.0", 999)
-Pins.mm, Pins.wm = 0, 0
-function Pins:AddMinimapIconMap() self.mm = self.mm + 1 end
-function Pins:AddWorldMapIconMap() self.wm = self.wm + 1 end
-function Pins:RemoveAllMinimapIcons() self.mm = 0 end
-function Pins:RemoveAllWorldMapIcons() self.wm = 0 end
+Pins.refs = {}
+function Pins:Count(ref) return self.refs[ref] or 0 end
+function Pins:AddMinimapIconMap(ref) self.refs[ref] = (self.refs[ref] or 0) + 1 end
+function Pins:AddWorldMapIconMap(ref) self.refs[ref] = (self.refs[ref] or 0) + 1 end
+function Pins:RemoveAllMinimapIcons(ref) self.refs[ref] = 0 end
+function Pins:RemoveAllWorldMapIcons(ref) self.refs[ref] = 0 end
 
 local ns = {}
 local function loadToc(dir, toc, addon, nsTable)
@@ -48,7 +55,7 @@ loadToc(BACKUP_DIR, "Forager_Backup.toc", "Forager_Backup", {})
 print("Tests:")
 test("login initialises DB, skills, data", function()
     M.Fire("PLAYER_LOGIN")
-    assertTrue(ns.db and ns.db.version == 1, "db")
+    assertTrue(ns.db and ns.db.version == 2, "db")
     assertTrue(ns.Player:Skill("herb") == 50, "herb skill")
     assertTrue(ForagerData and ForagerData.nodes, "data loaded")
 end)
@@ -253,6 +260,7 @@ end)
 test("UI builds every tab and Start farming works", function()
     ns.Main:Toggle()
     for i = 1, #ns.Main.tabs do ns.Main:SelectTab(i) end
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error"), tostring(l)) end
     ns.Main:StartFarming()
     assertTrue(ns.Route.active, "route active")
     ns.Main:SelectTabByKey("map")
@@ -268,11 +276,122 @@ test("slash commands", function()
 end)
 
 test("pins refresh and world map pins", function()
+    local HP = LibStub("HereBeDragons-Pins-2.0")
+    ns.Route:Stop()
     ns.Pins:RefreshMinimap()
-    assertTrue(LibStub("HereBeDragons-Pins-2.0").mm > 0, "minimap pins")
+    assertTrue(HP:Count("ForagerMinimap") > 0, "minimap pins")
     WorldMapFrame._shown = true
+    -- default: world map shows only the active farm's nodes -> nothing without a farm
+    assertTrue(ns.settings.worldNodes == "goal", "default goal mode")
     ns.Pins:RefreshWorldMap()
-    assertTrue(LibStub("HereBeDragons-Pins-2.0").wm > 0, "world pins")
+    assertTrue(HP:Count("ForagerWorldmap") == 0, "no world pins without a farm")
+    ns.settings.worldNodes = "all"
+    M.worldMapID = 1429
+    ns.Pins:RefreshWorldMap()
+    local all = HP:Count("ForagerWorldmap")
+    assertTrue(all > 0, "all mode shows pins")
+    ns.settings.worldNodes = "goal"
+    local best = ns.Finder:Best("herb", "gold")
+    ns.Route:Start(best)
+    ns.Pins:RefreshWorldMap()
+    local goalN = HP:Count("ForagerWorldmap")
+    assertTrue(goalN > 0, "goal mode shows farm nodes")
+    for _, f in ipairs({}) do f = f end
+    -- every pin shown in goal mode is a herb
+    assertTrue(HP:Count("ForagerRouteWorldmap") == #best.route.points, "numbered route stops on world map")
+    assertTrue(HP:Count("ForagerRouteMinimap") == #best.route.points, "route stops on minimap")
+    ns.Route:Stop()
+    assertTrue(HP:Count("ForagerRouteWorldmap") == 0, "stops cleared")
+end)
+
+test("caves: names, learning, overlay areas and finder filter", function()
+    assertTrue(ns.Caves:IsCaveName(1429, "Fargodeep Mine"), "bundled cave name")
+    assertTrue(ns.Caves:IsCaveName(1411, "Dustwind Cave"), "keyword cave")
+    assertTrue(not ns.Caves:IsCaveName(1429, "Goldshire"), "town is not a cave")
+    assertTrue(ns.Caves:ZoneHasCaves(1429), "elwynn has caves")
+    -- learning while indoors in a cave subzone
+    M.mapID, M.pos = 1429, { 0.40, 0.80 }
+    M.indoors, M.subzone = true, "Fargodeep Mine"
+    for i = 0, 4 do M.pos = { 0.39 + i * 0.01, 0.80 } ns.Caves:LearnHere() end
+    M.indoors, M.subzone = false, ""
+    local cave, name = ns.Caves:At(1429, 0.41, 0.80)
+    assertTrue(cave == true and name == "Fargodeep Mine", "learned cell")
+    assertTrue(#ns.Caves:List(1429) == 1, "cave list")
+    -- explored-map overlay: Jasperlode Mine around (0.61, 0.52)
+    M.areaNames[54] = "Jasperlode Mine"
+    M.exploredAt = function(map, x, y) if map == 1429 and math.abs(x - 0.61) < 0.06 and math.abs(y - 0.50) < 0.06 then return { 54 } end return {} end
+    M.Fire("MAP_EXPLORATION_UPDATED")
+    local c2, n2 = ns.Caves:At(1429, 0.61, 0.50)
+    assertTrue(c2 == true and n2 == "Jasperlode Mine", "overlay cave")
+    assertTrue(ns.Caves:At(1429, 0.2, 0.2) == false, "explored, not a cave")
+    -- mob seen while in a cave
+    M.indoors, M.subzone, M.unitGUID = true, "Fargodeep Mine", "Creature-0-1-0-1-40-0000F00D"
+    M.Fire("PLAYER_TARGET_CHANGED")
+    assertTrue(ns.db.caveMobs[40] and ns.db.caveMobs[40].n == "Fargodeep Mine", "cave mob learned")
+    M.indoors, M.subzone = false, ""
+    -- finder: caves only
+    ns.settings.location = "cave"
+    local res = ns.Finder:Run({ goal = "gold", zones = { 1429 }, perZone = 2 })
+    ns.settings.location = "any"
+    assertTrue(#res > 0, "cave results")
+    for _, r in ipairs(res) do
+        for _, p in ipairs(r.points) do assertTrue(ns.Caves:At(1429, p.x, p.y) == true, "point outside cave") end
+        assertTrue(r.cave, "result flagged cave")
+    end
+    print("       cave top: " .. res[1].zoneName .. " / " .. tostring(res[1].areaName) .. " " .. ns.Money(res[1].perHour, true) .. "/h")
+    local out = ns.Finder:Run({ goal = "gold", zones = { 1429 }, perZone = 1, location = "outdoor" })
+    assertTrue(#out > 0 and not out[1].cave, "outdoor results")
+    -- zones without caves are skipped in cave mode
+    local any = ns.Finder:Run({ goal = "herb", location = "cave", anyLevel = true })
+    for _, r in ipairs(any) do assertTrue(ns.Caves:ZoneHasCaves(r.uiMap), "cave zone") end
+    M.exploredAt = function() return {} end
+    ns.Caves:ResetCache()
+end)
+
+test("item goals, suggestions and farm-this-mob", function()
+    local sug = ns.Finder:Suggest("peace", 5)
+    assertTrue(sug[1] and sug[1].kind == "item" and sug[1].text == "Peacebloom", "suggest Peacebloom")
+    local cat = ns.Finder:Suggest("herb", 5)
+    assertTrue(cat[1] and cat[1].kind == "goal" and cat[1].key == "herb", "category first")
+    local res = ns.Finder:Run({ goal = "item:2447", perZone = 1 })
+    assertTrue(#res > 0 and res[1].source == "node", "peacebloom from nodes")
+    assertTrue(res[1].itemUnits and res[1].itemUnits > 0, "units per hour")
+    for _, it in ipairs(res[1].items) do assertTrue(it.id == 2447, "only the item") end
+    local cloth = ns.Finder:Run({ goal = "item:2589", perZone = 1 })
+    assertTrue(#cloth > 0 and cloth[1].source == "mob", "linen from mobs")
+    local r = ns.Finder:MobResult(cloth[1].mobs[1].npc, cloth[1].uiMap)
+    assertTrue(r and #r.route.points > 0 and r.rect and r.perHour >= 0, "mob result")
+    ns.Route:Start(r)
+    assertTrue(ns.Route.active.result == r, "farming mob")
+    ns.Route:Stop()
+end)
+
+test("preview, open map at farm, map pin and world map translation", function()
+    local best = ns.Finder:Best("herb", "gold")
+    WorldMapFrame._shown = false
+    ns.Route:Preview(best)
+    assertTrue(ns.Route:Shown() and ns.Route:Shown().preview, "preview shown")
+    ns.Overlay:OpenMapTo(best.uiMap)
+    assertTrue(M.worldMapID == best.uiMap, "map opened at farm zone")
+    ns.Route:Start(best)
+    assertTrue(ns.Route.preview == nil and ns.Route:Shown() == ns.Route.active, "start clears preview")
+    assertTrue(M.userWaypoint and M.userWaypoint.uiMapID == best.uiMap, "game map pin set")
+    -- draw on the farm zone and on a continent (OpenMap-style) view without errors
+    ns.Overlay.lastError = nil
+    M.worldMapID = best.uiMap
+    ns.Overlay.DrawWorldMap()
+    M.worldMapID = 1415
+    ns.Overlay.DrawWorldMap()
+    M.worldMapID = 9999
+    ns.Overlay.DrawWorldMap()
+    ns.Overlay.UpdateArrow()
+    ns.Overlay.DrawMinimap()
+    assertTrue(ns.Overlay.lastError == nil, "draw error: " .. tostring(ns.Overlay.lastError))
+    ns.Route:Stop()
+    assertTrue(M.userWaypoint == nil, "pin cleared on stop")
+    ns.Slash("diag")
+    ns.Slash("caves")
+    ns.Slash("map")
 end)
 
 test("missing data addon degrades gracefully", function()

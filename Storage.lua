@@ -2,12 +2,19 @@
 -- auto-restore, versioned migrations and safe mode. Same approach as AuctionTrends.
 local _, ns = ...
 
-ns.DB_VERSION = 1
+ns.DB_VERSION = 2
 
 local DEFAULT_SETTINGS = {
     -- layers
-    showNodesMinimap = true, showNodesWorld = true, showBundled = true, showLearned = true, showShared = true,
-    showArea = true, showRoute = true, showArrow = true, showMobCamps = true,
+    showBundled = true, showLearned = true, showShared = true,
+    worldNodes = "goal",         -- off | goal (only the active farm's nodes) | all
+    minimapNodes = "all",        -- off | goal | all (eligible)
+    location = "any",            -- finder/mobs location filter: any | cave | outdoor
+    gamePin = true,              -- place the game's own map pin on the farm spot
+    tomtom = true,               -- also add a TomTom waypoint when TomTom is installed
+    hud = true,                  -- route HUD with arrow
+    includeEnemy = false,        -- rank enemy-faction zones too
+    showArea = true, showRoute = true,
     pinScale = 1.0, pinAlpha = 1.0, areaAlpha = 0.25, routeAlpha = 0.9, distanceFade = true, fadeYards = 250,
     onlyEligibleNodes = true, hideInCombat = true, hideInInstances = true,
     kinds = { herb = true, ore = true, fish = true },
@@ -41,6 +48,8 @@ local function defaults()
         shared = {},     -- same shape, from guild/party
         mobs = {},       -- [npcID] = { k, i, q, s, si, p, pi, g }
         fish = {},       -- [uiMap] = { casts = n, items = {[itemID] = n} } open-water catches
+        caves = {},      -- [uiMap][cellKey] = { n = subzone name, c = samples } learned cave footprint (1% cells)
+        caveMobs = {},   -- [npcID] = { m = uiMap, n = cave name, c = sightings }
         names = {},      -- learned node type names for unknown types: ["i<itemID>"] = name
         stats = { items = {}, gathers = {}, kills = 0, skins = 0, zones = {}, gold = 0 },
         sessions = {},   -- recent sessions summary
@@ -64,7 +73,16 @@ end
 
 -- Migrations: [fromVersion] = function(db). Each runs protected.
 local migrations = {
-    -- [1] = function(db) ... db.version = 2 end,
+    [1] = function(db)
+        -- 1.1.0: world map shows only the active farm's nodes by default
+        db.settings = db.settings or {}
+        db.settings.worldNodes = "goal"
+        db.settings.minimapNodes = (db.settings.showNodesMinimap == false) and "off" or "all"
+        db.settings.hud = db.settings.showArrow ~= false
+        db.caves = db.caves or {}
+        db.caveMobs = db.caveMobs or {}
+        db.version = 2
+    end,
 }
 
 local function sizeOf(db)
