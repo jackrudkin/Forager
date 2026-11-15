@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: Forager Backup
+## Notes: Storage-only addon: keeps a second copy of Forager's data in its own SavedVariables file.
+## Author: Jack
+## Version: 1.0.0
+## X-License: GPL-3.0-or-later
+## Dependencies: Forager
+## SavedVariables: ForagerBackupDB
+
+Backup.lua

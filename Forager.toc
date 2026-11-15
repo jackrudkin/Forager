@@ -1,0 +1,41 @@
+## Interface: 16001
+## Title: Forager
+## Notes: Where to farm any gathering profession or material in WoW Forever: ranked spots, map areas and routes, node pins, and loot/skinning chances on mob tooltips.
+## Author: Jack
+## Version: 1.0.0
+## X-License: GPL-3.0-or-later
+## SavedVariables: ForagerDB
+## OptionalDeps: AuctionTrends, Auctionator, GatherMate2, GatherLite
+## AddonCompartmentFunc: Forager_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Forager_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Forager_OnAddonCompartmentLeave
+## IconTexture: Interface\Icons\INV_Misc_Herb_07
+
+Libs\embeds.xml
+
+Core.lua
+Data\Static.lua
+Data\NodeTypes.lua
+Data\Zones.lua
+Storage.lua
+DataStore.lua
+Player.lua
+Prices.lua
+Capture.lua
+Comms.lua
+Import.lua
+Quests.lua
+Finder.lua
+Route.lua
+Pins.lua
+Overlay.lua
+Tooltip.lua
+UI\Widgets.lua
+UI\Main.lua
+UI\TabFind.lua
+UI\TabMap.lua
+UI\TabNodes.lua
+UI\TabMobs.lua
+UI\TabStats.lua
+UI\TabSettings.lua
+Launcher.lua

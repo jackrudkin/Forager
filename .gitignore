@@ -1,0 +1,5 @@
+*.zip
+.release/
+tools/*.json
+tools/*.sql
+tools/areamap.lua

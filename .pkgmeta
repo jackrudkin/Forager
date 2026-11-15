@@ -1,0 +1,12 @@
+package-as: Forager
+
+# Backup companion and the bundled data addon ship as their own folders in the same zip
+move-folders:
+  Forager/Forager_Backup: Forager_Backup
+  Forager/Forager_Data: Forager_Data
+
+ignore:
+  - .github
+  - tests
+  - tools
+  - .luacheckrc

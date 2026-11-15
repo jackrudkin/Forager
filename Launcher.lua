@@ -1,0 +1,199 @@
+-- Launcher: initialisation, minimap button, LDB launcher, addon compartment, slash commands.
+local _, ns = ...
+
+-------------------------------------------------------------------------------
+-- minimap button (own, draggable around the minimap edge)
+-------------------------------------------------------------------------------
+local button
+local function tooltip(owner)
+    GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
+    GameTooltip:AddLine("Forager")
+    local a = ns.Route.active
+    if a then
+        local r = a.result
+        GameTooltip:AddLine(string.format("%s in %s", ns.GoalByKey[r.goal].label, r.zoneName), 1, 1, 1)
+    end
+    if ns.Quests:IsActive() then
+        local z1 = ns.Quests:Zones()
+        GameTooltip:AddLine("Questing in: " .. (z1 and ns.Player:ZoneName(z1) or "?"), 1, 0.82, 0)
+    end
+    local perHour = ns.Capture:SessionPerHour()
+    if ns.Capture.session.start then GameTooltip:AddLine("Session: " .. ns.Money(ns.Capture.session.value) .. "  (" .. ns.Money(perHour, true) .. "/h)", 1, 1, 1) end
+    GameTooltip:AddLine("Left-click: open  ·  Right-click: Start farming", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Shift-right-click: stop route  ·  Drag: move", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+end
+
+local function onClick(_, btn)
+    if btn == "RightButton" then
+        if IsShiftKeyDown() then ns.Route:Stop() else ns.Main:StartFarming() end
+    else
+        ns.Main:Toggle()
+    end
+end
+
+local function placeButton()
+    local angle = math.rad(ns.settings.minimap.angle or 200)
+    local r = (Minimap:GetWidth() / 2) + 5
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * r, math.sin(angle) * r)
+end
+
+local function createButton()
+    button = CreateFrame("Button", "ForagerMinimapButton", Minimap)
+    button:SetSize(31, 31)
+    button:SetFrameStrata("MEDIUM")
+    button:SetFrameLevel(8)
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:RegisterForDrag("LeftButton")
+    button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    local overlay = button:CreateTexture(nil, "OVERLAY")
+    overlay:SetSize(53, 53)
+    overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    overlay:SetPoint("TOPLEFT")
+    local bg = button:CreateTexture(nil, "BACKGROUND")
+    bg:SetSize(20, 20)
+    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    bg:SetPoint("TOPLEFT", 7, -5)
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(17, 17)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Herb_07")
+    icon:SetPoint("TOPLEFT", 7, -6)
+    button:SetScript("OnClick", onClick)
+    button:SetScript("OnEnter", tooltip)
+    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    button:SetScript("OnDragStart", function(self)
+        self:SetScript("OnUpdate", function()
+            local mx, my = Minimap:GetCenter()
+            local cx, cy = GetCursorPosition()
+            local scale = Minimap:GetEffectiveScale()
+            cx, cy = cx / scale, cy / scale
+            ns.settings.minimap.angle = math.deg(math.atan2(cy - my, cx - mx)) % 360
+            placeButton()
+        end)
+    end)
+    button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+    placeButton()
+    button:SetShown(not ns.settings.minimapHide)
+end
+
+-- addon compartment (TOC: AddonCompartmentFunc)
+function Forager_OnAddonCompartmentClick(_, btn)
+    onClick(nil, btn == "RightButton" and "RightButton" or "LeftButton")
+end
+function Forager_OnAddonCompartmentEnter(_, frame) tooltip(frame) end
+function Forager_OnAddonCompartmentLeave() GameTooltip:Hide() end
+
+-------------------------------------------------------------------------------
+-- slash commands
+-------------------------------------------------------------------------------
+local HELP = {
+    "/forage - open/close the window",
+    "/forage start [goal] - best spot now (goals: herb ore skin fish cloth greens leather meat elemental lockbox gold)",
+    "/forage stop - stop the route",
+    "/forage find | map | nodes | mobs | stats | settings - open a tab",
+    "/forage quest <zone name> | current | off - set questing zone",
+    "/forage mode gold | skill - rank by gold/hour or skill-ups/hour",
+    "/forage mob - print Forager lines for your target",
+    "/forage import - import GatherMate2/GatherLite nodes",
+    "/forage save - write data to disk now (reloads UI)",
+    "/forage backup | restore - backup status / restore from backup",
+    "/forage reset nodes|mobs|stats|all - clear data (asks first)",
+    "/forage status - data and backup status",
+}
+
+local function findZone(text)
+    text = text:lower()
+    for id, z in pairs(ns.Zones) do if z.name:lower() == text then return id end end
+    for id, z in pairs(ns.Zones) do if z.name:lower():find(text, 1, true) then return id end end
+end
+
+StaticPopupDialogs["FORAGER_CONFIRM_RESET"] = {
+    text = "Forager: clear %s? This can't be undone (the backup file is refreshed too).",
+    button1 = YES, button2 = NO, timeout = 0, whileDead = true, hideOnEscape = true,
+    OnAccept = function(_, data) ns:ResetData(data) ns:Print("Cleared: " .. data) end,
+}
+StaticPopupDialogs["FORAGER_CONFIRM_RESTORE"] = {
+    text = "Forager: replace your current data with the backup copy? The UI will reload.",
+    button1 = YES, button2 = NO, timeout = 0, whileDead = true, hideOnEscape = true,
+    OnAccept = function() ns:RestoreBackup() end,
+}
+
+local function slash(msg)
+    msg = strtrim(msg or "")
+    local cmd, rest = msg:match("^(%S*)%s*(.-)$")
+    cmd = (cmd or ""):lower()
+    if cmd == "" then ns.Main:Toggle()
+    elseif cmd == "start" then
+        if rest ~= "" and ns.GoalByKey[rest:lower()] then ns.char.goal = rest:lower() end
+        ns.Main:StartFarming()
+    elseif cmd == "stop" then ns.Route:Stop()
+    elseif cmd == "find" or cmd == "map" or cmd == "nodes" or cmd == "mobs" or cmd == "stats" or cmd == "settings" then ns.Main:Toggle(cmd)
+    elseif cmd == "quest" then
+        local r = rest:lower()
+        if r == "off" or r == "" then ns.Quests:Set(nil, nil) ns:Print("Questing zone cleared - dedicated farming.")
+        elseif r == "current" or r == "auto" then ns.Quests:Set(r == "auto" and "auto" or ns.Player:MapID(), ns.char.questZone2) ns:Print("Questing in: " .. ns.Player:ZoneName(ns.Player:MapID()))
+        else
+            local z = findZone(rest)
+            if z then ns.Quests:Set(z, ns.char.questZone2) ns:Print("Questing in: " .. ns.Zones[z].name) else ns:Print("Unknown zone: " .. rest) end
+        end
+    elseif cmd == "mode" then
+        if rest == "gold" or rest == "skill" then ns.settings.mode = rest ns:Print("Ranking by " .. (rest == "gold" and "gold/hour" or "skill-ups/hour")) end
+    elseif cmd == "mob" then
+        local guid = ns.Safe(UnitGUID("target"))
+        local id, kind = ns.IDFromGUID(guid)
+        if kind ~= "Creature" then ns:Print("Target a creature first.") return end
+        ns.DS:Load()
+        ns:Print((ns.Safe(UnitName("target")) or "?") .. " (npc " .. id .. ")")
+        for _, l in ipairs(ns.Tooltip:Lines(id, ns.Safe(UnitLevel("target")))) do DEFAULT_CHAT_FRAME:AddMessage("  " .. l[1] .. (l[2] and ("  " .. l[2]) or "")) end
+    elseif cmd == "import" then ns.Import:Run()
+    elseif cmd == "save" then ns:SaveNow()
+    elseif cmd == "backup" then ns:Print("Backup: " .. ns:BackupStatus())
+    elseif cmd == "restore" then StaticPopup_Show("FORAGER_CONFIRM_RESTORE")
+    elseif cmd == "reset" then
+        local what = (rest ~= "" and rest:lower()) or "all"
+        if what ~= "nodes" and what ~= "mobs" and what ~= "stats" then what = "all" end
+        local dlg = StaticPopup_Show("FORAGER_CONFIRM_RESET", what)
+        if dlg then dlg.data = what end
+    elseif cmd == "status" then
+        local learned = 0
+        for _, z in pairs(ns.db.nodes) do learned = learned + ns.Count(z) end
+        ns:Print(string.format("v%s · learned nodes %d · mobs observed %d · database %s · backup %s%s", ns.version, learned, ns.Count(ns.db.mobs),
+            ns.DS:HasBundled() and "loaded" or "not loaded", ns:BackupStatus(), ns.safeMode and (" · SAFE MODE: " .. ns.safeMode) or ""))
+    elseif cmd == "debug" then
+        ns.settings.debug = not ns.settings.debug
+        ns:Print("debug " .. (ns.settings.debug and "on" or "off") .. " (" .. #ns.debugLog .. " log lines)")
+    else
+        for _, l in ipairs(HELP) do DEFAULT_CHAT_FRAME:AddMessage(ns.COLOR .. l .. "|r") end
+    end
+end
+
+SLASH_FORAGER1, SLASH_FORAGER2 = "/forage", "/forager"
+SlashCmdList.FORAGER = slash
+ns.Slash = slash
+
+-------------------------------------------------------------------------------
+-- initialisation
+-------------------------------------------------------------------------------
+ns:On("PLAYER_LOGIN", function()
+    ns:InitDB()
+    ns.Player:RefreshSkills()
+    ns.DS:Load()
+    ns.Capture:Init()
+    ns.Comms:Init()
+    ns.Pins:Init()
+    ns.Overlay:Init()
+    ns.Tooltip:Init()
+    createButton()
+    local ldb = LibStub("LibDataBroker-1.1", true)
+    if ldb then
+        ldb:NewDataObject("Forager", { type = "launcher", icon = "Interface\\Icons\\INV_Misc_Herb_07", label = "Forager",
+            OnClick = onClick, OnTooltipShow = function(tt) tt:AddLine("Forager") tt:AddLine("Left: open · Right: Start farming", 0.7, 0.7, 0.7) end })
+    end
+    ns:On("FORAGER_SETTINGS_CHANGED", function() if button then button:SetShown(not ns.settings.minimapHide) end end)
+    ns.After(5, function() ns.Import:FirstRun() end)
+    local learned = 0
+    for _, z in pairs(ns.db.nodes) do learned = learned + ns.Count(z) end
+    ns:Print(string.format("v%s loaded · %d learned nodes · %d mobs observed · backup %s · /forage",
+        ns.version, learned, ns.Count(ns.db.mobs), ns:BackupStatus()))
+end)
