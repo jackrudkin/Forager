@@ -4,6 +4,7 @@
 ## Author: Jack
 ## Version: 1.0.0
 ## X-License: GPL-3.0-or-later
+## X-Curse-Project-ID: 1806735
 ## SavedVariables: ForagerDB
 ## OptionalDeps: AuctionTrends, Auctionator, GatherMate2, GatherLite
 ## AddonCompartmentFunc: Forager_OnAddonCompartmentClick
