@@ -28,11 +28,24 @@ jobs:
           v=$(grep -m1 '^## Version:' Forager.toc | sed 's/^## Version:[[:space:]]*//' | tr -d '\r[:space:]')
           if [ -z "$v" ]; then echo "No version in Forager.toc"; exit 1; fi
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
-            echo "v$v already released; nothing to publish."
-            echo "release=false" >> "$GITHUB_OUTPUT"
+            # Tag exists. Publish only if it points at this commit and has no GitHub release yet
+            # (e.g. the tag was pushed by hand because the workflow couldn't push it).
+            code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GITHUB_OAUTH" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/v$v")
+            if [ "$(git rev-list -n1 "v$v")" = "$(git rev-parse HEAD)" ] && [ "$code" = "404" ]; then
+              echo "v$v is tagged on this commit but not released yet; publishing."
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              echo "tag=v$v" >> "$GITHUB_OUTPUT"
+            else
+              echo "v$v already released; nothing to publish."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             git tag "v$v"
-            git push origin "v$v"
+            if ! git push origin "v$v"; then
+              echo "::error::The workflow token can't push tags. In the repo: Settings > Actions > General > Workflow permissions = Read and write, and check Settings > Rules for tag rules. Or push the tag yourself: git tag v$v && git push origin v$v, then re-run this workflow."
+              exit 1
+            fi
             echo "release=true" >> "$GITHUB_OUTPUT"
             echo "tag=v$v" >> "$GITHUB_OUTPUT"
           fi
