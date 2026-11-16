@@ -11,8 +11,16 @@ local GRID = 20
 -------------------------------------------------------------------------------
 -- goals (static categories + dynamic "item:<id>")
 -------------------------------------------------------------------------------
+local COMBO = {
+    ["combo:ore"] = { label = "Mining + mobs", short = "Mining + mobs", icon = "Interface\\Icons\\Trade_Mining", gather = "ore" },
+    ["combo:herb"] = { label = "Herbs + mobs", short = "Herbs + mobs", icon = "Interface\\Icons\\Trade_Herbalism", gather = "herb" },
+    ["combo:both"] = { label = "Herbs, ore + mobs", short = "Herbs, ore + mobs", icon = "Interface\\Icons\\INV_Pick_02", gather = "both" },
+}
+for k, g in pairs(COMBO) do g.key, g.kind = k, "combo" end
+
 function Finder:GoalInfo(key)
     if ns.GoalByKey[key] then return ns.GoalByKey[key] end
+    if COMBO[key] then return COMBO[key] end
     local id = type(key) == "string" and tonumber(key:match("^item:(%d+)$"))
     if id then
         return { key = key, label = DS:ItemName(id), kind = "item", item = id,
@@ -225,6 +233,7 @@ local function riskFor(zone, faction)
 end
 
 Finder.RiskFor = riskFor
+Finder.NameArea = nameArea
 
 --- Build a farm result for one mob type in a zone (Mobs & Drops "Farm this mob").
 function Finder:MobResult(npcID, uiMap)
@@ -284,6 +293,7 @@ local function zoneCandidates(opts)
     end
     return list
 end
+Finder.ZoneCandidates = zoneCandidates
 
 local function evalNodes(uiMap, goal, opts, out)
     local s = ns.settings

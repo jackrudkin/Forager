@@ -4,6 +4,10 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 1.4: Gather + Kill
+
+A new **Gather + Kill** tab finds areas where mining and/or herbalism plus killing the mobs on the way pays more than either alone. See [Gather + Kill](#gather--kill).
+
 ## What's new in 1.3
 
 | Change | Details |
@@ -63,11 +67,12 @@ Forager draws no node pins. Live nodes show through the game's own tracking (Fin
 
 ## Window (`/forage`)
 
-The sidebar has six tabs. Below them, the **Now farming** card shows the active farm with **Map** and **Stop** buttons. The status bar at the bottom shows your search scope, session gold/hour and price sources.
+The sidebar has seven tabs. Below them, the **Now farming** card shows the active farm with **Map** and **Stop** buttons. The status bar at the bottom shows your search scope, session gold/hour and price sources.
 
 | Tab | What's there |
 |---|---|
 | **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** toggle. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
+| **Gather + Kill** | **Gather**: Mining / Herbs / Both, plus **Location** and **Search in** (shared with Farm). Sliders: Seconds per kill, Reach from the route, Mob respawn. Cards show total gold/hour and the split (e.g. ore 1g 20s + mobs 80s), plus the gain over doing either alone. Detail panel: map preview; per-hour split with "only gathering here" and "only mobs here" for comparison; the loop's walk / gather / fight minutes; which mobs are **worth killing** (gold per kill, gold per fighting minute, kills/hour) and which to **skip**; top loot per hour; Start farming / Show on world map / Set waypoint. |
 | **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
 | **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
 | **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
@@ -99,6 +104,38 @@ No public data source has positions for cave interiors (Questie and CMaNGOS spaw
 - **Open world map** (HUD, Now farming card, Route & Map, `/forage map`) opens the map at the farm zone.
 - **No node pins** anywhere; nodes are the game's own tracking.
 - **OpenMap** (`OpenMapAPI`, [docs](https://github.com/openmap-world/openmap/blob/main/docs/api.md)): while OpenMap's stitched map is showing, route points are placed with `WorldFromMap` / `MapFromWorld`, and the route layer sits above `ArtTopLevel()` so OpenMap's art doesn't cover it. Opening the map glides the view to the farm with `ShowWorld`, and Forager redraws on `OpenMap_ViewChanged` / `OpenMap_StitchedChanged`. Without OpenMap, the route is translated to the displayed map with HereBeDragons. `/forage diag` shows the OpenMap state and the route layer's frame level.
+
+## Gather + Kill
+
+Each area is scored on one loop of its route, with **time as the shared budget**. That way mining and mob income aren't simply added together.
+
+| Part of the loop | Time | Income |
+|---|---|---|
+| Walking | route length ÷ speed | — |
+| Gathering | live nodes within reach of the route × seconds per gather | node value × live share (30%) |
+| Fighting | mobs killed × seconds per kill (faster for lower-level mobs, +½ reach walked per pull) | each mob's full loot value (drops, coin, disenchant value of greens/blues, skins if you have Skinning) |
+
+**Gold/hour** = (node income + mob income) × 3600 ÷ (walk + gather + fight).
+
+**Which mobs to kill:** a mob type is only worth killing when its gold per second of fighting beats the loop's current gold per second. Forager takes mob types from best to worst gold per fighting second while that holds. This is the standard best-ratio rule and gives the highest total. The rest are listed under **Skip**: they'd pay less than the time spent gathering. So a combined spot is never rated below gathering alone on the same route.
+
+**Respawns:** a mob you killed is back only after the respawn time (default 5 min). A loop shorter than that meets fewer mobs (loop time ÷ respawn); this feedback is solved by iterating.
+
+**Areas and routes:**
+- For each zone the shortlist is the best 3 windows by node value and the best 3 by node + mob value (about 800 yd; 450 in Caves & mines). Each candidate is then evaluated exactly.
+- Two routes are tried per area: through the nodes only, and through the nodes plus up to 3 camps of worthwhile mobs the node route misses. The faster one wins.
+- Up to 2 areas per zone are kept.
+- An area needs at least 3 nodes you can gather.
+
+**Compared with:**
+- *Only gathering here*: the same route without fighting.
+- *Only mobs here*: the Farm tab's mob model on the same area.
+
+The card shows the gain over the better of the two. If just killing pays more, the detail panel says so.
+
+Defaults you can change in the tab: 30 s per kill, 30 yd reach, 5 min respawn. Live share and seconds per gather come from Settings → Finder assumptions.
+
+**Limitations:** it uses Classic spawn points and loot tables, distances are straight lines, and mobs you skip can still aggro. **Both** routes through herbs and ore, but you can only track one of them at a time.
 
 ## Goals
 
@@ -139,7 +176,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `/forage` (or `/forager`) | Open/close the window |
 | `/forage start [goal or item]` | Best spot now. Goals: herb ore skin fish cloth greens leather meat elemental lockbox gold, or an item name (`/forage start copper ore`) |
 | `/forage stop` | Stop the route |
-| `/forage farm` / `mobs` / `route` / `nodes` / `stats` / `settings` | Open that tab |
+| `/forage farm` / `combo` / `mobs` / `route` / `nodes` / `stats` / `settings` | Open that tab |
 | `/forage map` | Open the world map at your farm |
 | `/forage caves` | Caves in this zone, cells you've walked, whether you're in one |
 | `/forage diag` | Diagnostics to paste into a bug report |
@@ -193,12 +230,13 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 32 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 33 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
   - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps;
-  - OpenMap (mocked API): positions, layer above its art, view glide, window hide/restore, preview cleared on close.
+  - OpenMap (mocked API): positions, layer above its art, view glide, window hide/restore, preview cleared on close;
+  - Gather + Kill: split and loop time add up, never below gathering alone, worthy/skipped mobs on the right side of the loop rate, slower kills never raise the rate, ore/herb/both, start as a farm.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).

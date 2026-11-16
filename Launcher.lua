@@ -92,7 +92,7 @@ local HELP = {
     "/forage - open/close the window",
     "/forage start [goal|item name] - best spot now (goals: herb ore skin fish cloth greens leather meat elemental lockbox gold)",
     "/forage stop - stop the route",
-    "/forage farm | mobs | route | nodes | stats | settings - open a tab",
+    "/forage farm | combo | mobs | route | nodes | stats | settings - open a tab",
     "/forage map - open the world map at your farm spot",
     "/forage caves - caves known in this zone",
     "/forage diag - diagnostics (paste this when reporting a problem)",
@@ -140,7 +140,7 @@ local function slash(msg)
         ns.Main:StartFarming()
     elseif cmd == "stop" then ns.Route:Stop()
     elseif cmd == "map" then ns.Overlay:OpenMapTo()
-    elseif cmd == "find" or cmd == "farm" or cmd == "route" or cmd == "nodes" or cmd == "mobs" or cmd == "stats" or cmd == "settings" then ns.Main:Toggle(cmd)
+    elseif cmd == "find" or cmd == "farm" or cmd == "combo" or cmd == "route" or cmd == "nodes" or cmd == "mobs" or cmd == "stats" or cmd == "settings" then ns.Main:Toggle(cmd)
     elseif cmd == "caves" then
         local m = ns.Player:MapID()
         local z = m and ns.Zones[m]

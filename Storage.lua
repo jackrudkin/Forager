@@ -15,6 +15,10 @@ local DEFAULT_SETTINGS = {
     tomtom = false,              -- also add a TomTom waypoint when starting (if installed)
     hud = true,                  -- route HUD with arrow
     includeEnemy = false,        -- rank enemy-faction zones too
+    comboGather = "auto",        -- Gather + Kill: auto | ore | herb | both
+    comboKillSeconds = 30,       -- fight + loot (+ skin) per equal-level mob
+    comboPullYards = 30,         -- mobs and nodes this close to the route count as "on the way"
+    comboRespawn = 300,          -- seconds before a killed mob is back
     areaAlpha = 0.12, routeAlpha = 0.8,
     hideInCombat = true, hideInInstances = true,
     -- finder

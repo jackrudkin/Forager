@@ -24,7 +24,7 @@ local function thin(uiMap, pts, maxPoints)
         for _, q in ipairs(out) do
             if dist(uiMap, p, q) < 25 then ok = false break end
         end
-        if ok then out[#out + 1] = { x = p.x, y = p.y, w = p.w, t = p.t, npc = p.npc } end
+        if ok then out[#out + 1] = { x = p.x, y = p.y, w = p.w, t = p.t, npc = p.npc, n = p.n, camp = p.camp } end
         if #out >= maxPoints then break end
     end
     return out

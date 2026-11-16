@@ -354,6 +354,49 @@ test("OpenMap: route above its art, positions via its API, view glides to the fa
     OpenMapAPI = nil
 end)
 
+test("gather + kill: time-shared rate, best-ratio mob choice, results usable as a farm", function()
+    local res = ns.Combo:Run({ gather = "ore", perZone = 2 })
+    assertTrue(#res > 0, "combo results")
+    for i, r in ipairs(res) do
+        if i > 1 then assertTrue(res[i - 1].perHour >= r.perHour, "sorted") end
+        assertTrue(r.goal == "combo:ore" and r.source == "combo", "goal")
+        assertTrue(math.abs(r.nodeRate + r.mobRate - r.perHour) < 1, "split adds up")
+        assertTrue(r.perHour + 1 >= r.nodesOnlyRate, "never worse than gathering alone")
+        assertTrue(math.abs(r.walkSec + r.gatherSec + r.fightSec - r.loopSec) < 0.01, "time adds up")
+        local avg = r.perHour / 3600
+        for _, m in ipairs(r.worthy) do assertTrue(m.perMin / 60 >= avg - 1e-6, "worthy mob beats the loop rate") end
+        for _, m in ipairs(r.skipped) do assertTrue(m.perMin / 60 <= avg + 1e-6, "skipped mob doesn't") end
+        assertTrue(#r.route.points > 0 and r.rect, "route + area")
+    end
+    local top = res[1]
+    print(string.format("       combo top: %s %s/h (ore %s + mobs %s; ore only %s, mobs only %s), %d worth killing, %d skipped",
+        top.zoneName, ns.Money(top.perHour, true), ns.Money(top.nodeRate, true), ns.Money(top.mobRate, true),
+        ns.Money(top.nodesOnlyRate, true), ns.Money(top.mobsOnlyRate, true), #top.worthy, #top.skipped))
+    -- slower kills -> mobs worth less of your time -> mob share can't grow
+    local old = ns.settings.comboKillSeconds
+    ns.settings.comboKillSeconds = 90
+    local slow = ns.Combo:Run({ gather = "ore", zones = { top.uiMap }, perZone = 1 })[1]
+    ns.settings.comboKillSeconds = 10
+    local fast = ns.Combo:Run({ gather = "ore", zones = { top.uiMap }, perZone = 1 })[1]
+    ns.settings.comboKillSeconds = old
+    assertTrue(slow and fast and fast.mobRate >= slow.mobRate and fast.perHour >= slow.perHour, "kill speed monotonic")
+    -- herbs and both
+    assertTrue(#ns.Combo:Run({ gather = "herb", perZone = 1 }) > 0, "herb combo")
+    assertTrue(#ns.Combo:Run({ gather = "both", perZone = 1 }) > 0, "both combo")
+    -- start it like any farm
+    assertTrue(ns.Finder:GoalInfo("combo:ore").label == "Mining + mobs", "goal label")
+    ns.Route:Start(top)
+    ns.Overlay.lastError = nil
+    ns.Overlay.UpdateArrow()
+    ns.Overlay.DrawMinimap()
+    assertTrue(ns.Overlay.lastError == nil, "hud/minimap with combo: " .. tostring(ns.Overlay.lastError))
+    ns.Main:Toggle("combo")
+    ns.Main:Toggle("route")
+    ns.Main.frame:Hide()
+    ns.Route:Stop()
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error") and not tostring(l):find("Gather %+ Kill error"), tostring(l)) end
+end)
+
 test("settings migration to v4 (route only)", function()
     local savedDB, savedBackup = ForagerDB, ForagerBackupDB
     ForagerBackupDB = nil

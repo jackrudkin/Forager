@@ -2,7 +2,7 @@
 ## Title: Forager
 ## Notes: Where to farm any gathering profession, material or item in WoW Forever: ranked spots, a route on the map and minimap, and loot/skinning chances on mob tooltips.
 ## Author: Jack
-## Version: 1.3.1
+## Version: 1.4.0
 ## X-License: GPL-3.0-or-later
 ## X-Curse-Project-ID: 1806735
 ## SavedVariables: ForagerDB
@@ -28,12 +28,14 @@ Import.lua
 Quests.lua
 Caves.lua
 Finder.lua
+Combo.lua
 Route.lua
 Overlay.lua
 Tooltip.lua
 UI\Widgets.lua
 UI\Main.lua
 UI\TabFarm.lua
+UI\TabCombo.lua
 UI\TabMobs.lua
 UI\TabRoute.lua
 UI\TabNodes.lua
