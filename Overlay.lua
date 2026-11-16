@@ -1,6 +1,7 @@
--- Overlay: farm area + route lines on the world map (any map that contains the farm zone, so
--- continent views and OpenMap's seamless map work too) and the minimap; route HUD with arrow;
--- the game's own map pin / TomTom waypoint on the farm spot; "open the world map at the farm".
+-- Overlay: the route on the world map (any map that contains the farm zone, so continent views
+-- and OpenMap's seamless map work too) and the minimap. Forager draws no node pins: nodes are the
+-- game's own tracking. Optional farm-area outline, route HUD with arrow, optional game map pin /
+-- TomTom waypoint, "open the world map at the farm".
 local _, ns = ...
 local Overlay = {}
 ns.Overlay = Overlay
@@ -146,14 +147,15 @@ end
 -------------------------------------------------------------------------------
 local tomtomUID, ourPin
 
-function Overlay:SetFarmPin(result)
+--- force = set even if the "on start" settings are off (explicit Set waypoint buttons).
+function Overlay:SetFarmPin(result, force)
     Overlay:ClearFarmPin()
     if not result or not result.uiMap then return end
     local x, y
     if result.rect then x, y = (result.rect[1] + result.rect[3]) / 2, (result.rect[2] + result.rect[4]) / 2
     else x, y = 0.5, 0.5 end
     local title = "Forager: " .. ns.Finder:GoalInfo(result.goal).label .. (result.areaName and (" - " .. result.areaName) or "")
-    if ns.settings.gamePin and C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates then
+    if (force or ns.settings.gamePin) and C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates then
         local ok = pcall(function()
             if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(result.uiMap) then error("not allowed") end
             C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(result.uiMap, x, y))
@@ -161,7 +163,7 @@ function Overlay:SetFarmPin(result)
         end)
         ourPin = ok or nil
     end
-    if ns.settings.tomtom and TomTom and TomTom.AddWaypoint then
+    if (force or ns.settings.tomtom) and TomTom and TomTom.AddWaypoint then
         local ok, uid = pcall(TomTom.AddWaypoint, TomTom, result.uiMap, x, y, { title = title, persistent = false, minimap = true, world = true, from = "Forager" })
         if ok then tomtomUID = uid end
     end
@@ -238,10 +240,7 @@ function Overlay:CacheWorld()
         return { wx, wy }
     end
     mmWorld.route = {}
-    for _, p in ipairs(a.route.points) do
-        local c = w(p.x, p.y)
-        if c then mmWorld.route[#mmWorld.route + 1] = c end
-    end
+    for i, p in ipairs(a.route.points) do mmWorld.route[i] = w(p.x, p.y) or false end
     if a.result.rect then
         local r = a.result.rect
         local c1, c2, c3, c4 = w(r[1], r[2]), w(r[3], r[2]), w(r[3], r[4]), w(r[1], r[4])
@@ -287,9 +286,24 @@ local function drawMinimap()
             local oc = a.result and a.result.cave and T.cave or T.area
             for i = 1, 4 do seg(mmWorld.area[i], mmWorld.area[i % 4 + 1], oc, 0.55, 1) end
         end
-        if s.showRoute then
-            local r = mmWorld.route
-            if #r > 1 then for i = 1, #r do seg(r[i], r[i % #r + 1], T.route, s.routeAlpha * 0.85, 1.5) end end
+        local r, mode = mmWorld.route, s.routeMinimap
+        local alpha = s.routeAlpha * 0.85
+        if mode == "loop" and #r > 1 then
+            for i = 1, #r do
+                local p, q = r[i], r[i % #r + 1]
+                if p and q then seg(p, q, T.route, alpha, 1.5) end
+            end
+        elseif mode == "next" and #r > 0 then
+            -- like a sat-nav: you -> next stop, then the following legs, fading out
+            local idx = a.index or 1
+            local prev = { px, py }
+            for k = 0, math.min(3, #r - 1) do
+                local q = r[(idx - 1 + k) % #r + 1]
+                if q then
+                    seg(prev, q, T.route, alpha * (1 - k * 0.2), k == 0 and 2 or 1.5)
+                    prev = q
+                end
+            end
         end
     end
     hideFrom(mmLines, n)

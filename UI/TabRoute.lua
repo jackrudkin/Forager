@@ -35,7 +35,7 @@ Main:RegisterTab("route", "Route & Map", "Interface\\Icons\\INV_Misc_Map_01", fu
     b2:SetPoint("LEFT", b1, "RIGHT", 6, 0)
     local b3 = UI.Button(panel, "Restart here", 90, function() local a = ns.Route.active if a then ns.Route:Start(a.result) end end, nil, 26)
     b3:SetPoint("TOPLEFT", b1, "BOTTOMLEFT", 0, -6)
-    local b4 = UI.Button(panel, "Waypoint", 76, function() local a = ns.Route.active if a then ns.Overlay:SetFarmPin(a.result) end end, nil, 26)
+    local b4 = UI.Button(panel, "Waypoint", 76, function() local a = ns.Route.active if a then ns.Overlay:SetFarmPin(a.result, true) end end, nil, 26)
     b4:SetPoint("LEFT", b3, "RIGHT", 6, 0)
     local b5 = UI.Button(panel, "Stop", 60, function() ns.Route:Stop() end, nil, 26)
     b5:SetPoint("LEFT", b4, "RIGHT", 6, 0)
@@ -52,33 +52,27 @@ Main:RegisterTab("route", "Route & Map", "Interface\\Icons\\INV_Misc_Map_01", fu
     local function layer(label, key, tip)
         place(UI.Check(right, label, function() return ns.settings[key] end, function(v) ns.settings[key] = v changed() end, tip), 24)
     end
-    layer("Farm area", "showArea")
-    layer("Route line and stops", "showRoute")
+    layer("Route on the world map", "showRoute")
+    y = y - 4
+    place(UI.Muted(right, "Route on the minimap"), 16)
+    place(UI.Segmented(right, {
+        { key = "off", label = "Off" },
+        { key = "next", label = "Next stops", tip = "A line from you to the next stop, then the next few legs (fading)." },
+        { key = "loop", label = "Whole loop" },
+    }, function() return ns.settings.routeMinimap end, function(v) ns.settings.routeMinimap = v changed() end), 32)
+    layer("Farm area outline", "showArea")
     layer("Route HUD with arrow", "hud", "Small movable panel: arrow to the next stop, distance, loop progress, Skip/Map/Stop.")
-    layer("Game map pin on the farm", "gamePin", "Uses the game's own waypoint (also shows on the edge of the minimap).")
-    layer("TomTom waypoint (if installed)", "tomtom")
-    y = y - 6
-    local FARM = {
-        { key = "clean", label = "Clean", tip = "Area, route and the next stop only." },
-        { key = "dots", label = "Spawn dots", tip = "Plus a small dot for each spawn point of what you're farming, inside the farm area only." },
-        { key = "icons", label = "Icons", tip = "Plus item icons for those spawn points (farm area only)." },
-    }
-    local function segRow(label, key, items, h)
-        place(UI.Muted(right, label), 16)
-        place(UI.Segmented(right, items, function() return ns.settings[key] end, function(v) ns.settings[key] = v changed() end), h or 30)
-    end
-    segRow("While farming: world map", "farmWorld", FARM)
-    segRow("While farming: minimap", "farmMinimap", FARM)
-    segRow("Not farming: world map nodes", "worldNodes", { { key = "off", label = "Off" }, { key = "all", label = "All in zone" } })
-    segRow("Not farming: minimap nodes", "minimapNodes", { { key = "off", label = "Off" }, { key = "all", label = "Nearby" } }, 34)
-    place(UI.Header(right, "Legend"), 20)
+    layer("Game map pin when starting", "gamePin", "Puts the game's own waypoint on the farm area when you press Start farming.")
+    layer("TomTom arrow when starting", "tomtom", "If TomTom is installed.")
+    y = y - 8
+    place(UI.Header(right, "Nodes"), 20)
     local legend = UI.Label(right, table.concat({
-        "|cffffd100■|r farm area   |cff9e7af2■|r cave area",
-        "|cff33d9ff—|r route   |cff33d9ff•|r stop   |cffffd900●|r next stop",
-        "Minimap shows only the next stop (on the edge",
-        "when out of range) and the one after it.",
-        "Node colour = your skill: |cffff8040■|r |cffffff00■|r |cff40c040■|r |cff808080■|r",
-        "Pins are known spawn points, not live nodes.",
+        "Forager draws no node pins. Use the game's",
+        "own tracking (Find Herbs / Find Minerals).",
+        "",
+        "|cff33d9ff—|r the route through the best spawn points",
+        "|cffffd100■|r farm area (if the outline is on)",
+        "The HUD arrow points to the next stop.",
     }, "\n"), "GameFontHighlightSmall")
     legend:SetJustifyV("TOP")
     legend:SetSpacing(2)

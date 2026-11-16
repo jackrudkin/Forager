@@ -1,20 +1,18 @@
 # Forager (WoW Forever)
 
-Tells you where to farm any gathering profession, material or single item (including inside caves and mines), draws the area and an optimised route on the world map and minimap, shows what every mob drops ranked by gold per kill, and adds loot, skinning and gear-grade chances to mob tooltips. Built to replace GatherLite, GatherMate2 and similar addons.
+Tells you where to farm any gathering profession, material or single item (including inside caves and mines), draws an optimised route on the world map and minimap, shows what every mob drops ranked by gold per kill, and adds loot, skinning and gear-grade chances to mob tooltips.
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
-## What's new in 1.2
+## What's new in 1.3
 
 | Change | Details |
 |---|---|
-| Calm maps while farming | When you start farming, the world map and minimap show only the farm area, a thin route line and the **next stop** (gold). No node pins by default. |
-| Fewer route markers | World map: a small dot per stop, next stop in gold, no numbers. Minimap: only the next stop (it sits on the minimap edge when out of range) and the one after it. |
-| Spawn pins are optional | **While farming: world map / minimap** = Clean (default) / Spawn dots / Icons. Dots and icons cover only what you're farming, inside the farm area. |
-| Not farming | Minimap node pins stay on (icons or small dots, your choice). World map node pins are off unless you pick **All in zone**. |
-| Softer overlay | Thinner area outline and route line, lighter area fill (12%); caves get a purple outline. |
+| No node pins | Forager no longer draws anything on nodes: no icons or dots on the minimap or world map, farming or not. Nodes are the game's own tracking (Find Herbs / Find Minerals). |
+| Just the route | World map: a thin route line through the farm, nothing else. Minimap: a line from you to the next stop and the next few legs, fading out (or Off / Whole loop). |
+| Fewer extras by default | Farm area outline, game map pin and TomTom arrow are off by default (toggles in Route & Map or Settings). **Set waypoint** still places the game pin on demand. |
 
-Existing settings are upgraded automatically: everyone starts on Clean while farming. If you had "Farm only" on the minimap, you get Spawn dots.
+Settings from earlier versions are upgraded automatically, and the old pin settings are removed.
 
 ## What's new in 1.1
 
@@ -39,7 +37,7 @@ Existing settings are upgraded automatically: everyone starts on Clean while far
    Each `.toc` must sit directly inside its folder (not `Forager\Forager\`).
 2. Restart the game or `/reload`, then tick **Forager**, **Forager Backup** and **Forager Data** in the AddOns list.
 3. If Forever patches and the addon shows "Out of date", tick **Load out of date AddOns**, or edit the `## Interface:` line (`/dump (select(4, GetBuildInfo()))` gives the new number).
-4. Switching from GatherMate2 or GatherLite: leave them enabled for one login. Forager imports their saved nodes automatically (or type `/forage import`). Then you can delete them.
+4. If you use GatherMate2 or GatherLite, Forager imports their saved nodes automatically to improve its rankings (or type `/forage import`).
 
 ## How data is collected
 
@@ -57,16 +55,9 @@ Existing settings are upgraded automatically: everyone starts on Clean while far
 
 **How captures work:** a gather spell (Herb Gathering, Mining, Fishing, Skinning, Pick Pocket) followed by a loot window is recorded. Spells are matched by ID and, as a fallback, by localized name, so Forever's own spell IDs are learned automatically. The node type comes from the loot source's GameObject ID, or from the main item. Creature loot is grouped per corpse GUID and counted once per corpse. Any value the client returns as secret is skipped without an error.
 
-## Minimap node identification
+## Nodes on the map
 
-Since 7 Nov (build 70862) and 13 Nov 2026 (a server-side change), Forever no longer lets addons read what the yellow tracking dots are. The client has also never had a way to restyle them. So Forager draws its own pins:
-
-- The icon is the item the node gives (Copper Ore, Peacebloom…).
-- The border shows your skill: orange, yellow, green, grey, or red (too high).
-- Pins fade with distance on the minimap.
-- Hover a pin for: name, required skill vs yours, source, times gathered, last gathered, and what it yielded.
-
-A pin marks a known spawn point, not a live node. The game's own yellow dots still show live nodes.
+Forager draws no node pins. Live nodes show through the game's own tracking (Find Herbs / Find Minerals), as without the addon. Spawn points from the database, your gathers, guild sharing and imports are still used to rank spots and build routes, and you can browse them in the Nodes tab.
 
 ## Window (`/forage`)
 
@@ -76,10 +67,10 @@ The sidebar has six tabs. Below them, the **Now farming** card shows the active 
 |---|---|
 | **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** toggle. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
 | **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
-| **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map layers: area, route line and stops, route HUD, game map pin, TomTom; node pins **while farming** (world map / minimap: Clean / Spawn dots / Icons) and **not farming** (world map: Off / All in zone; minimap: Off / Nearby); plus a legend. |
-| **Nodes** | Per-zone node database. Columns: Show, Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node. Click a row to show or hide that node type. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone, kind filters, "Only nodes I can gather". |
+| **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
+| **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
 | **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions, data health, **Save now** and **Backup now**. |
-| **Settings** | Node pins while farming and not farming, pin style (icons / dots), sources, distance fade, hide in combat/instances, pin/area/route opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
+| **Settings** | Route on world map / minimap, farm area outline, hide in combat/instances, route/area opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
 
 There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
 
@@ -100,17 +91,12 @@ No public data source has positions for cave interiors (Questie and CMaNGOS spaw
 
 ## World map, minimap and OpenMap
 
-- **Start farming** draws the area (yellow, purple for caves) and a thin route line on the world map and minimap. The world map adds a small dot per stop; the minimap shows only the next stop (gold, on the edge when out of range) and the one after. It also places the game's map pin on the area. **Stop** removes all of it.
+- **Start farming** draws a thin route line on the world map. On the minimap you get a line from you to the next stop plus the next few legs. The HUD arrow points to the next stop. **Stop** removes it all.
+- Optional (off by default): farm area outline (yellow, purple for caves), the game's map pin and a TomTom arrow when you start. **Set waypoint** places the game pin on demand.
 - **Show on world map** previews a result without starting it. The preview disappears when you close the map.
 - **Open world map** (HUD, Now farming card, Route & Map, `/forage map`) opens the map at the farm zone.
-- **Node pins while farming** default to **Clean** (none). **Spawn dots** or **Icons** show only what you're farming, inside the farm area.
-- **Node pins when not farming:** minimap Nearby (default; icons or dots), world map Off (default) or All in zone.
-- **OpenMap** runs inside the normal `WorldMapFrame`. Its source code (GitHub) wasn't available while this was written, so Forager uses the three methods most likely to show there:
-  - the game's own map pin, which OpenMap draws (it drops one on Ctrl-click);
-  - HereBeDragons pins flagged to show on parent and continent maps;
-  - lines on the map canvas translated to the displayed map ID.
-
-  If the area or route doesn't appear in OpenMap, run `/forage diag` with the map open and send the output.
+- **No node pins** anywhere; nodes are the game's own tracking.
+- **OpenMap** runs inside the normal `WorldMapFrame`. Its source code (GitHub) wasn't available while this was written. Forager draws the route on the map canvas, translated to the displayed map ID, which also covers continent views. If the route doesn't appear in OpenMap, turn on **Game map pin when starting** (OpenMap draws map pins) and run `/forage diag` with the map open.
 
 ## Goals
 
@@ -208,7 +194,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 - `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 31 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
-  - UI tabs (fails on any UI build error), slash commands, pins (clean/dots/icons while farming, idle pins, stops per map), settings migrations;
+  - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
   - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
@@ -236,18 +222,18 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `C_QuestLog.GetQuestsOnMap`, `GetQuestObjectives` | Questing mode | Ranked without detour ("No quest objectives found") |
 | `TooltipDataProcessor.AddTooltipPostCall` with `data.guid` | Mob tooltip | Fallback via `tooltip:GetUnit()` |
 | `C_Minimap.GetViewRadius`, `GetPlayerFacing` outside encounters | Minimap lines, arrow | Arrow shows "travel to zone"; lines hidden |
-| `WorldMapFrame:GetCanvas()`, `ScrollContainer:GetCanvasScale()`, `OnMapChanged` | World map lines | Lines not drawn; numbered stops (HBD pins) and the map pin still show |
+| `WorldMapFrame:GetCanvas()`, `ScrollContainer:GetCanvasScale()`, `OnMapChanged` | World map route line | Route not drawn on the world map; the HUD arrow and minimap route still work |
 | `HereBeDragons:TranslateZoneCoordinates` for Forever map IDs | Lines on continent/OpenMap views | Lines only on the zone map |
 | `OpenWorldMap(uiMapID)`, `WorldMapFrame:SetMapID` | Open map at farm | Map opens at your current zone |
-| `C_Map.SetUserWaypoint`, `UiMapPoint.CreateFromCoordinates`, `C_SuperTrack` | Game map pin on the farm | No pin (TomTom still works) |
+| `C_Map.SetUserWaypoint`, `UiMapPoint.CreateFromCoordinates`, `C_SuperTrack` | Optional game map pin / Set waypoint | No pin (TomTom still works) |
 | `C_MapExplorationInfo.GetExploredAreaIDsAtPosition`, `C_Map.GetAreaInfo` | Cave/subzone names at spawn points | Caves only from your visits |
 | `IsIndoors`, `GetSubZoneText` | Cave learning | No learning; explored areas still used |
 | `C_Map.GetMapArtLayers`, `GetMapArtLayerTextures` | Zone map previews | "Map preview unavailable" (lines still drawn) |
-| OpenMap rendering HBD pins / map pins | OpenMap display | See `/forage diag` |
+| OpenMap showing lines drawn on the map canvas | Route in OpenMap | Turn on the game map pin; see `/forage diag` |
 | Template `UICheckButtonTemplate`, `BackdropTemplate` | UI | Checkboxes / panel backgrounds missing (cosmetic) |
-| Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, stops, search, close | Blank texture (cosmetic) |
-| `C_Item.GetItemIconByID` for Forever-only items | Pin icons | Herb/ore default icon |
+| Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, preview dots, search, close | Blank texture (cosmetic) |
+| `C_Item.GetItemIconByID` for Forever-only items | Item icons in the window | Question-mark icon |
 
 ## Credits & licence
 
-Forager is GPL-3.0-or-later. Bundled data comes from QuestieDB (Forever data) and CMaNGOS classic-db, both GPLv3. Libraries: HereBeDragons (BSD), LibStub, CallbackHandler-1.0, LibDataBroker-1.1. See `THIRD_PARTY.md`.
+Forager is GPL-3.0-or-later. Bundled data comes from QuestieDB (Forever data) and CMaNGOS classic-db, both GPLv3. Libraries: HereBeDragons core (BSD), LibStub, CallbackHandler-1.0, LibDataBroker-1.1. See `THIRD_PARTY.md`.

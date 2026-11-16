@@ -279,7 +279,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     end, nil, 30)
     d.showMap:SetPoint("LEFT", d.start, "RIGHT", 8, 0)
     d.pin = UI.Button(d, "Set waypoint", 110, function()
-        if state.selected then ns.Overlay:SetFarmPin(state.selected) ns:Print("Waypoint set (game map pin" .. (TomTom and " + TomTom" or "") .. ").") end
+        if state.selected then ns.Overlay:SetFarmPin(state.selected, true) ns:Print("Waypoint set (game map pin" .. (TomTom and " + TomTom" or "") .. ").") end
     end, nil, 30)
     d.pin:SetPoint("LEFT", d.showMap, "RIGHT", 8, 0)
     UI.AttachTip(d.pin, "Set waypoint", "Places the game's own map pin (and a TomTom arrow if installed) on the centre of the area.")

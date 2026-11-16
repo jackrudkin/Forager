@@ -2,28 +2,21 @@
 -- auto-restore, versioned migrations and safe mode. Same approach as AuctionTrends.
 local _, ns = ...
 
-ns.DB_VERSION = 3
+ns.DB_VERSION = 4
 
 local DEFAULT_SETTINGS = {
     -- layers
-    showBundled = true, showLearned = true, showShared = true,
-    -- while farming (calm by default): clean = area + route + next stop only
-    farmWorld = "clean",         -- clean | dots | icons (goal nodes inside the farm area)
-    farmMinimap = "clean",       -- clean | dots | icons
-    -- not farming
-    worldNodes = "off",          -- off | all (every eligible node of the zone you're viewing)
-    minimapNodes = "all",        -- off | all (eligible nodes nearby)
-    pinStyle = "icons",          -- icons | dots
+    -- maps: Forager draws only the route (nodes are the game's own tracking)
+    showRoute = true,            -- route line on the world map
+    routeMinimap = "next",       -- off | next (you -> next stop + following legs) | loop (whole route)
+    showArea = false,            -- farm area outline
     location = "any",            -- finder/mobs location filter: any | cave | outdoor
-    gamePin = true,              -- place the game's own map pin on the farm spot
-    tomtom = true,               -- also add a TomTom waypoint when TomTom is installed
+    gamePin = false,             -- place the game's own map pin on the farm spot when starting
+    tomtom = false,              -- also add a TomTom waypoint when starting (if installed)
     hud = true,                  -- route HUD with arrow
     includeEnemy = false,        -- rank enemy-faction zones too
-    showArea = true, showRoute = true,
-    pinScale = 1.0, pinAlpha = 1.0, areaAlpha = 0.12, routeAlpha = 0.8, distanceFade = true, fadeYards = 250,
-    onlyEligibleNodes = true, hideInCombat = true, hideInInstances = true,
-    kinds = { herb = true, ore = true, fish = true },
-    hiddenTypes = {},
+    areaAlpha = 0.12, routeAlpha = 0.8,
+    hideInCombat = true, hideInInstances = true,
     -- finder
     mode = "gold",               -- gold | skill
     activeFraction = 0.30,       -- share of spawn points with a live node at any moment
@@ -98,6 +91,20 @@ local migrations = {
         if st.areaAlpha == 0.25 then st.areaAlpha = 0.12 end
         if st.routeAlpha == 0.9 then st.routeAlpha = 0.8 end
         db.version = 3
+    end,
+    [3] = function(db)
+        -- 1.3.0: no Forager node pins at all; maps show just the route
+        local st = db.settings or {}
+        db.settings = st
+        for _, k in ipairs({ "farmWorld", "farmMinimap", "worldNodes", "minimapNodes", "pinStyle", "pinScale", "pinAlpha",
+            "distanceFade", "fadeYards", "onlyEligibleNodes", "kinds", "hiddenTypes", "showBundled", "showLearned", "showShared",
+            "showNodesMinimap", "showNodesWorld", "showArrow", "showMobCamps" }) do st[k] = nil end
+        st.showRoute = true
+        st.routeMinimap = "next"
+        st.showArea = false
+        st.gamePin = false
+        st.tomtom = false
+        db.version = 4
     end,
 }
 
