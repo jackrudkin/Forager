@@ -84,7 +84,7 @@ No public data source has positions for cave interiors (Questie and CMaNGOS spaw
 | The game's explored-map areas (`C_MapExplorationInfo.GetExploredAreaIDsAtPosition`) | Which subzone a spawn point lies in; a cave or mine name counts as a cave | For map areas you have explored |
 | Learning as you play | Every 2 s while you're indoors in a cave subzone, Forager records your 1 % map cell. Mobs you target, mouse over or see nameplates for there are marked as cave mobs | Fills in as you visit caves |
 
-- **Caves & mines** keeps only spawn points known to be in a cave. It uses a tighter area (about 450 yd) and skips zones without caves. Results are marked **CAVE** (purple area on the maps), and the cave's name replaces the subzone.
+- **Caves & mines** keeps only spawn points known to be in a cave. It uses a tighter area (about 450 yd) and skips zones without caves. Results are marked **CAVE** (purple outline on the maps if the area outline is on), and the cave's name replaces the subzone.
 - **Outdoors** drops known cave points. Points with unknown status are kept.
 - If nothing is known yet, the Farm tab lists the caves in zones for your level, so you know where to go.
 - `/forage caves` lists the zone's caves, the cells you've walked and whether you're in one now.
