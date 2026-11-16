@@ -24,8 +24,12 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     local pct = function(v) return math.floor(v * 100 + 0.5) .. "%" end
 
     place(1, UI.Header(panel, "Map & minimap"), 22)
-    seg(1, "Node pins on the world map", "worldNodes", { { key = "off", label = "Off" }, { key = "goal", label = "Farm only" }, { key = "all", label = "All" } })
-    seg(1, "Node pins on the minimap", "minimapNodes", { { key = "off", label = "Off" }, { key = "goal", label = "Farm only" }, { key = "all", label = "All nearby" } })
+    local FARM = { { key = "clean", label = "Clean" }, { key = "dots", label = "Spawn dots" }, { key = "icons", label = "Icons" } }
+    seg(1, "While farming: world map", "farmWorld", FARM)
+    seg(1, "While farming: minimap", "farmMinimap", FARM)
+    seg(1, "Not farming: world map nodes", "worldNodes", { { key = "off", label = "Off" }, { key = "all", label = "All in zone" } })
+    seg(1, "Not farming: minimap nodes", "minimapNodes", { { key = "off", label = "Off" }, { key = "all", label = "Nearby" } })
+    seg(1, "Node pin style (not farming)", "pinStyle", { { key = "icons", label = "Icons" }, { key = "dots", label = "Dots" } })
     check(1, "Database spawn points", "showBundled", "Classic spawn points from QuestieDB (Forever coordinates).")
     check(1, "Learned nodes", "showLearned")
     check(1, "Shared nodes", "showShared")
@@ -34,8 +38,6 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     check(1, "Hide overlays in instances", "hideInInstances")
     slider(1, "Pin size", "pinScale", 0.6, 2, 0.1, pct)
     slider(1, "Pin opacity", "pinAlpha", 0.2, 1, 0.05, pct)
-    slider(1, "Area opacity", "areaAlpha", 0, 0.8, 0.05, pct)
-    slider(1, "Route opacity", "routeAlpha", 0.2, 1, 0.05, pct)
 
     place(2, UI.Header(panel, "Farming"), 22)
     check(2, "Route HUD with arrow", "hud")
@@ -43,6 +45,8 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     check(2, "TomTom waypoint (if installed)", "tomtom")
     check(2, "Rank enemy-faction zones", "includeEnemy")
     check(2, "Include elites / high-level mobs", "showDangerous")
+    slider(2, "Area opacity", "areaAlpha", 0, 0.8, 0.05, pct)
+    slider(2, "Route opacity", "routeAlpha", 0.2, 1, 0.05, pct)
     ys[2] = ys[2] + 4
     place(2, UI.Header(panel, "Finder assumptions"), 22)
     slider(2, "Live share of spawn points", "activeFraction", 0.1, 0.8, 0.05, pct)

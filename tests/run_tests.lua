@@ -55,7 +55,7 @@ loadToc(BACKUP_DIR, "Forager_Backup.toc", "Forager_Backup", {})
 print("Tests:")
 test("login initialises DB, skills, data", function()
     M.Fire("PLAYER_LOGIN")
-    assertTrue(ns.db and ns.db.version == 2, "db")
+    assertTrue(ns.db and ns.db.version == 3, "db")
     assertTrue(ns.Player:Skill("herb") == 50, "herb skill")
     assertTrue(ForagerData and ForagerData.nodes, "data loaded")
 end)
@@ -285,33 +285,73 @@ test("slash commands", function()
     ns.Slash("mob")
 end)
 
-test("pins refresh and world map pins", function()
+test("pins: calm maps while farming, node pins only on request", function()
     local HP = LibStub("HereBeDragons-Pins-2.0")
+    local act = ns.Pins._active
     ns.Route:Stop()
+    M.mapID, M.pos = 1429, { 0.45, 0.6 }
+    -- not farming: minimap icons nearby, world map off by default
+    assertTrue(ns.settings.farmWorld == "clean" and ns.settings.farmMinimap == "clean", "farm defaults clean")
+    assertTrue(ns.settings.worldNodes == "off" and ns.settings.minimapNodes == "all", "idle defaults")
     ns.Pins:RefreshMinimap()
-    assertTrue(HP:Count("ForagerMinimap") > 0, "minimap pins")
+    local idle = HP:Count("ForagerMinimap")
+    assertTrue(idle > 0 and not act.mm[1].isDot, "minimap icons when idle")
+    ns.settings.pinStyle = "dots"
+    ns.Pins:RefreshMinimap()
+    assertTrue(act.mm[1].isDot, "dot style when idle")
+    ns.settings.pinStyle = "icons"
     WorldMapFrame._shown = true
-    -- default: world map shows only the active farm's nodes -> nothing without a farm
-    assertTrue(ns.settings.worldNodes == "goal", "default goal mode")
-    ns.Pins:RefreshWorldMap()
-    assertTrue(HP:Count("ForagerWorldmap") == 0, "no world pins without a farm")
-    ns.settings.worldNodes = "all"
     M.worldMapID = 1429
     ns.Pins:RefreshWorldMap()
-    local all = HP:Count("ForagerWorldmap")
-    assertTrue(all > 0, "all mode shows pins")
-    ns.settings.worldNodes = "goal"
-    local best = ns.Finder:Best("herb", "gold")
-    ns.Route:Start(best)
+    assertTrue(HP:Count("ForagerWorldmap") == 0, "world map node pins off by default")
+    ns.settings.worldNodes = "all"
     ns.Pins:RefreshWorldMap()
-    local goalN = HP:Count("ForagerWorldmap")
-    assertTrue(goalN > 0, "goal mode shows farm nodes")
-    for _, f in ipairs({}) do f = f end
-    -- every pin shown in goal mode is a herb
-    assertTrue(HP:Count("ForagerRouteWorldmap") == #best.route.points, "numbered route stops on world map")
-    assertTrue(HP:Count("ForagerRouteMinimap") == #best.route.points, "route stops on minimap")
+    assertTrue(HP:Count("ForagerWorldmap") > 0, "all in zone")
+    ns.settings.worldNodes = "off"
+    -- farming (defaults): no node pins anywhere, all stops on the world map, 2 stops on the minimap
+    local best = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })[1]
+    ns.Route:Start(best)
+    ns.Pins:RefreshAll()
+    assertTrue(HP:Count("ForagerMinimap") == 0, "no minimap node pins while farming (clean)")
+    assertTrue(HP:Count("ForagerWorldmap") == 0, "no world node pins while farming (clean)")
+    local n = #best.route.points
+    assertTrue(HP:Count("ForagerRouteWorldmap") == n, "every stop on the world map")
+    assertTrue(HP:Count("ForagerRouteMinimap") == math.min(2, n), "only next + following stop on the minimap")
+    -- spawn dots: only goal nodes inside the farm area
+    ns.settings.farmMinimap, ns.settings.farmWorld = "dots", "icons"
+    ns.Pins:RefreshAll()
+    assertTrue(HP:Count("ForagerMinimap") > 0 and HP:Count("ForagerMinimap") < idle, "farm-area dots, fewer than idle pins")
+    local r = best.rect
+    for _, f in ipairs(act.mm) do
+        assertTrue(f.isDot, "dot")
+        assertTrue(f.data.x >= r[1] - 0.01 and f.data.x <= r[3] + 0.01 and f.data.y >= r[2] - 0.01 and f.data.y <= r[4] + 0.01, "inside area")
+        assertTrue(ns.DS:GetType(f.data.t).kind == "herb", "goal kind only")
+    end
+    assertTrue(HP:Count("ForagerWorldmap") > 0 and not act.wm[1].isDot, "farm-area icons on world map")
+    ns.settings.farmMinimap, ns.settings.farmWorld = "clean", "clean"
+    -- preview: world map only
     ns.Route:Stop()
+    ns.Route:Preview(best)
+    ns.Pins:RefreshAll()
+    assertTrue(HP:Count("ForagerRouteMinimap") == 0 and HP:Count("ForagerRouteWorldmap") == n, "preview stops world map only")
+    assertTrue(HP:Count("ForagerMinimap") == idle, "idle minimap pins during a preview")
+    ns.Route:Preview(nil)
     assertTrue(HP:Count("ForagerRouteWorldmap") == 0, "stops cleared")
+end)
+
+test("settings migration v2 -> v3 (calm maps)", function()
+    local savedDB, savedBackup = ForagerDB, ForagerBackupDB
+    ForagerBackupDB = nil
+    ForagerDB = { version = 2, settings = { worldNodes = "goal", minimapNodes = "goal", areaAlpha = 0.25, routeAlpha = 0.9, pinScale = 1.3 },
+        nodes = { [1429] = { a = { t = 1, x = 0.5, y = 0.5 } } } }
+    ns:InitDB()
+    local st = ns.settings
+    assertTrue(ns.db.version == 3 and not ns.safeMode, "migrated")
+    assertTrue(st.worldNodes == "off" and st.minimapNodes == "off" and st.farmMinimap == "dots" and st.farmWorld == "clean", "pin modes")
+    assertTrue(st.areaAlpha == 0.12 and st.routeAlpha == 0.8 and st.pinScale == 1.3 and st.pinStyle == "icons", "styles")
+    ForagerDB, ForagerBackupDB = savedDB, savedBackup
+    ns:InitDB()
+    assertTrue(ns.db.version == 3 and ns.settings.farmWorld == "clean", "restored")
 end)
 
 test("caves: names, learning, overlay areas and finder filter", function()

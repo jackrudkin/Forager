@@ -53,31 +53,32 @@ Main:RegisterTab("route", "Route & Map", "Interface\\Icons\\INV_Misc_Map_01", fu
         place(UI.Check(right, label, function() return ns.settings[key] end, function(v) ns.settings[key] = v changed() end, tip), 24)
     end
     layer("Farm area", "showArea")
-    layer("Route lines and numbered stops", "showRoute")
+    layer("Route line and stops", "showRoute")
     layer("Route HUD with arrow", "hud", "Small movable panel: arrow to the next stop, distance, loop progress, Skip/Map/Stop.")
     layer("Game map pin on the farm", "gamePin", "Uses the game's own waypoint (also shows on the edge of the minimap).")
     layer("TomTom waypoint (if installed)", "tomtom")
     y = y - 6
-    place(UI.Muted(right, "Node pins on the world map"), 16)
-    place(UI.Segmented(right, {
-        { key = "off", label = "Off" },
-        { key = "goal", label = "Farm only", tip = "Only the nodes of the spot you are farming or previewing." },
-        { key = "all", label = "All", tip = "Every eligible node of the zone you're viewing (busy)." },
-    }, function() return ns.settings.worldNodes end, function(v) ns.settings.worldNodes = v changed() end), 32)
-    place(UI.Muted(right, "Node pins on the minimap"), 16)
-    place(UI.Segmented(right, {
-        { key = "off", label = "Off" },
-        { key = "goal", label = "Farm only" },
-        { key = "all", label = "All nearby" },
-    }, function() return ns.settings.minimapNodes end, function(v) ns.settings.minimapNodes = v changed() end), 34)
+    local FARM = {
+        { key = "clean", label = "Clean", tip = "Area, route and the next stop only." },
+        { key = "dots", label = "Spawn dots", tip = "Plus a small dot for each spawn point of what you're farming, inside the farm area only." },
+        { key = "icons", label = "Icons", tip = "Plus item icons for those spawn points (farm area only)." },
+    }
+    local function segRow(label, key, items, h)
+        place(UI.Muted(right, label), 16)
+        place(UI.Segmented(right, items, function() return ns.settings[key] end, function(v) ns.settings[key] = v changed() end), h or 30)
+    end
+    segRow("While farming: world map", "farmWorld", FARM)
+    segRow("While farming: minimap", "farmMinimap", FARM)
+    segRow("Not farming: world map nodes", "worldNodes", { { key = "off", label = "Off" }, { key = "all", label = "All in zone" } })
+    segRow("Not farming: minimap nodes", "minimapNodes", { { key = "off", label = "Off" }, { key = "all", label = "Nearby" } }, 34)
     place(UI.Header(right, "Legend"), 20)
     local legend = UI.Label(right, table.concat({
         "|cffffd100■|r farm area   |cff9e7af2■|r cave area",
-        "|cff33d9ff—|r route   |cff33d9ff●|r stop   |cffffd900●|r next stop",
-        "Pin icon = what it gives; border = your skill:",
-        "|cffff8040■|r orange |cffffff00■|r yellow |cff40c040■|r green |cff808080■|r grey",
+        "|cff33d9ff—|r route   |cff33d9ff•|r stop   |cffffd900●|r next stop",
+        "Minimap shows only the next stop (on the edge",
+        "when out of range) and the one after it.",
+        "Node colour = your skill: |cffff8040■|r |cffffff00■|r |cff40c040■|r |cff808080■|r",
         "Pins are known spawn points, not live nodes.",
-        "Works on zone, continent and OpenMap views.",
     }, "\n"), "GameFontHighlightSmall")
     legend:SetJustifyV("TOP")
     legend:SetSpacing(2)

@@ -234,7 +234,10 @@ function ns.Diag()
         add("Active farm", "none")
     end
     add("Preview", ns.Route.preview and "yes" or "no")
-    add("World map / minimap nodes", ns.settings.worldNodes .. " / " .. ns.settings.minimapNodes)
+    add("Node pins farming (world/minimap)", ns.settings.farmWorld .. " / " .. ns.settings.farmMinimap)
+    add("Node pins not farming (world/minimap)", ns.settings.worldNodes .. " / " .. ns.settings.minimapNodes .. " · " .. ns.settings.pinStyle)
+    add("Pins on maps now (nodes mm/wm, stops mm/wm)", string.format("%d/%d, %d/%d", #ns.Pins._active.mm, #ns.Pins._active.wm,
+        #ns.Pins._active.rmm, #ns.Pins._active.rwm))
     add("Explored-area API", (C_MapExplorationInfo and C_MapExplorationInfo.GetExploredAreaIDsAtPosition) and "yes" or "no")
     if m then
         local cave, name = ns.Caves:At(m, x or 0.5, y or 0.5)

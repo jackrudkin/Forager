@@ -78,11 +78,12 @@ local function drawWorldMap()
                 fill:SetPoint("TOPLEFT", wm, "TOPLEFT", x1 * w, -y1 * h)
                 fill:SetPoint("BOTTOMRIGHT", wm, "TOPLEFT", x2 * w, -y2 * h)
                 local corners = { { x1, y1 }, { x2, y1 }, { x2, y2 }, { x1, y2 } }
+                local oc = r.cave and T.cave or T.area
                 for i = 1, 4 do
                     local p, q = corners[i], corners[i % 4 + 1]
                     local l = wmLine(nl) nl = nl + 1
-                    l:SetThickness(thick)
-                    l:SetColorTexture(T.area[1], T.area[2], T.area[3], 0.95)
+                    l:SetThickness(thick * 0.6)
+                    l:SetColorTexture(oc[1], oc[2], oc[3], 0.7)
                     l:SetStartPoint("TOPLEFT", wm, p[1] * w, -p[2] * h)
                     l:SetEndPoint("TOPLEFT", wm, q[1] * w, -q[2] * h)
                 end
@@ -96,7 +97,7 @@ local function drawWorldMap()
                 local x, y = toMap(p.x, p.y, a.uiMap, mapID)
                 if x and prev then
                     local l = wmLine(nl) nl = nl + 1
-                    l:SetThickness(thick * (zoneView and 1 or 0.7))
+                    l:SetThickness(thick * (zoneView and 0.75 or 0.55))
                     l:SetColorTexture(T.route[1], T.route[2], T.route[3], s.routeAlpha)
                     l:SetStartPoint("TOPLEFT", wm, prev[1] * w, -prev[2] * h)
                     l:SetEndPoint("TOPLEFT", wm, x * w, -y * h)
@@ -283,11 +284,12 @@ local function drawMinimap()
             end
         end
         if s.showArea and mmWorld.area then
-            for i = 1, 4 do seg(mmWorld.area[i], mmWorld.area[i % 4 + 1], T.area, 0.8, 1.5) end
+            local oc = a.result and a.result.cave and T.cave or T.area
+            for i = 1, 4 do seg(mmWorld.area[i], mmWorld.area[i % 4 + 1], oc, 0.55, 1) end
         end
         if s.showRoute then
             local r = mmWorld.route
-            if #r > 1 then for i = 1, #r do seg(r[i], r[i % #r + 1], T.route, s.routeAlpha, 2) end end
+            if #r > 1 then for i = 1, #r do seg(r[i], r[i % #r + 1], T.route, s.routeAlpha * 0.85, 1.5) end end
         end
     end
     hideFrom(mmLines, n)

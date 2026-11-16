@@ -2,20 +2,25 @@
 -- auto-restore, versioned migrations and safe mode. Same approach as AuctionTrends.
 local _, ns = ...
 
-ns.DB_VERSION = 2
+ns.DB_VERSION = 3
 
 local DEFAULT_SETTINGS = {
     -- layers
     showBundled = true, showLearned = true, showShared = true,
-    worldNodes = "goal",         -- off | goal (only the active farm's nodes) | all
-    minimapNodes = "all",        -- off | goal | all (eligible)
+    -- while farming (calm by default): clean = area + route + next stop only
+    farmWorld = "clean",         -- clean | dots | icons (goal nodes inside the farm area)
+    farmMinimap = "clean",       -- clean | dots | icons
+    -- not farming
+    worldNodes = "off",          -- off | all (every eligible node of the zone you're viewing)
+    minimapNodes = "all",        -- off | all (eligible nodes nearby)
+    pinStyle = "icons",          -- icons | dots
     location = "any",            -- finder/mobs location filter: any | cave | outdoor
     gamePin = true,              -- place the game's own map pin on the farm spot
     tomtom = true,               -- also add a TomTom waypoint when TomTom is installed
     hud = true,                  -- route HUD with arrow
     includeEnemy = false,        -- rank enemy-faction zones too
     showArea = true, showRoute = true,
-    pinScale = 1.0, pinAlpha = 1.0, areaAlpha = 0.25, routeAlpha = 0.9, distanceFade = true, fadeYards = 250,
+    pinScale = 1.0, pinAlpha = 1.0, areaAlpha = 0.12, routeAlpha = 0.8, distanceFade = true, fadeYards = 250,
     onlyEligibleNodes = true, hideInCombat = true, hideInInstances = true,
     kinds = { herb = true, ore = true, fish = true },
     hiddenTypes = {},
@@ -82,6 +87,17 @@ local migrations = {
         db.caves = db.caves or {}
         db.caveMobs = db.caveMobs or {}
         db.version = 2
+    end,
+    [2] = function(db)
+        -- 1.2.0: calm maps while farming; node pins only on request
+        local st = db.settings or {}
+        db.settings = st
+        st.farmWorld, st.farmMinimap = "clean", "clean"
+        if st.minimapNodes == "goal" then st.minimapNodes = "off" st.farmMinimap = "dots" end
+        if st.worldNodes ~= "all" then st.worldNodes = "off" end
+        if st.areaAlpha == 0.25 then st.areaAlpha = 0.12 end
+        if st.routeAlpha == 0.9 then st.routeAlpha = 0.8 end
+        db.version = 3
     end,
 }
 

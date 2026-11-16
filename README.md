@@ -4,7 +4,19 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
-## What's new in 1.1 (current release 1.1.2)
+## What's new in 1.2
+
+| Change | Details |
+|---|---|
+| Calm maps while farming | When you start farming, the world map and minimap show only the farm area, a thin route line and the **next stop** (gold). No node pins by default. |
+| Fewer route markers | World map: a small dot per stop, next stop in gold, no numbers. Minimap: only the next stop (it sits on the minimap edge when out of range) and the one after it. |
+| Spawn pins are optional | **While farming: world map / minimap** = Clean (default) / Spawn dots / Icons. Dots and icons cover only what you're farming, inside the farm area. |
+| Not farming | Minimap node pins stay on (icons or small dots, your choice). World map node pins are off unless you pick **All in zone**. |
+| Softer overlay | Thinner area outline and route line, lighter area fill (12%); caves get a purple outline. |
+
+Existing settings are upgraded automatically: everyone starts on Clean while farming. If you had "Farm only" on the minimap, you get Spawn dots.
+
+## What's new in 1.1
 
 | Change | Details |
 |---|---|
@@ -64,10 +76,10 @@ The sidebar has six tabs. Below them, the **Now farming** card shows the active 
 |---|---|
 | **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** toggle. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
 | **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
-| **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map layers: area, route + numbered stops, route HUD, game map pin, TomTom, world-map node pins (Off / Farm only / All) and minimap node pins (Off / Farm only / All nearby), plus a legend. |
+| **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map layers: area, route line and stops, route HUD, game map pin, TomTom; node pins **while farming** (world map / minimap: Clean / Spawn dots / Icons) and **not farming** (world map: Off / All in zone; minimap: Off / Nearby); plus a legend. |
 | **Nodes** | Per-zone node database. Columns: Show, Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node. Click a row to show or hide that node type. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone, kind filters, "Only nodes I can gather". |
 | **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions, data health, **Save now** and **Backup now**. |
-| **Settings** | Node pins (world map / minimap), sources, distance fade, hide in combat/instances, pin/area/route opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
+| **Settings** | Node pins while farming and not farming, pin style (icons / dots), sources, distance fade, hide in combat/instances, pin/area/route opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
 
 There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
 
@@ -88,10 +100,11 @@ No public data source has positions for cave interiors (Questie and CMaNGOS spaw
 
 ## World map, minimap and OpenMap
 
-- **Start farming** draws the area (yellow, purple for caves), the route and numbered stops on the world map and minimap. The next stop is gold. It also places the game's map pin on the area. **Stop** removes all of it.
+- **Start farming** draws the area (yellow, purple for caves) and a thin route line on the world map and minimap. The world map adds a small dot per stop; the minimap shows only the next stop (gold, on the edge when out of range) and the one after. It also places the game's map pin on the area. **Stop** removes all of it.
 - **Show on world map** previews a result without starting it. The preview disappears when you close the map.
 - **Open world map** (HUD, Now farming card, Route & Map, `/forage map`) opens the map at the farm zone.
-- **Node pins on the world map** default to **Farm only**: only the nodes of the active or previewed spot. **All** brings back every eligible node of the zone you're viewing.
+- **Node pins while farming** default to **Clean** (none). **Spawn dots** or **Icons** show only what you're farming, inside the farm area.
+- **Node pins when not farming:** minimap Nearby (default; icons or dots), world map Off (default) or All in zone.
 - **OpenMap** runs inside the normal `WorldMapFrame`. Its source code (GitHub) wasn't available while this was written, so Forager uses the three methods most likely to show there:
   - the game's own map pin, which OpenMap draws (it drops one on Ctrl-click);
   - HereBeDragons pins flagged to show on parent and continent maps;
@@ -192,10 +205,10 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 30 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 31 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
-  - UI tabs (fails on any UI build error), slash commands, pins (farm-only vs all, numbered stops);
+  - UI tabs (fails on any UI build error), slash commands, pins (clean/dots/icons while farming, idle pins, stops per map), settings migrations;
   - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.

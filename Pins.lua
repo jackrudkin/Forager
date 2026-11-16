@@ -1,6 +1,8 @@
--- Pins: Forager's own node icons and route waypoints on the minimap and world map (native yellow
--- dots can't be read or restyled on Forever). Pins are pooled and only created for the current /
--- displayed zone. World map default: only the nodes of the active farm (no clutter).
+-- Pins: Forager's own node pins and route stops on the minimap and world map (native yellow dots
+-- can't be read or restyled on Forever). Pins are pooled and only created for the current zone.
+-- While farming the maps stay calm: by default only the area, the route and the next stop; spawn
+-- dots/icons are optional and limited to the farm area. Not farming: minimap node pins (icons or
+-- dots), world map node pins off unless asked for.
 local _, ns = ...
 local Pins = {}
 ns.Pins = Pins
@@ -107,20 +109,57 @@ local function inGoal(t)
     return false
 end
 
-local function wanted(mode, pt, t)
-    if mode == "off" then return false end
+--- Is a point inside the shown farm's area (small margin)?
+local function inArea(pt, a)
+    local r = a and a.result and a.result.rect
+    if not r then return false end
+    local m = 0.005
+    return pt.x >= r[1] - m and pt.x <= r[3] + m and pt.y >= r[2] - m and pt.y <= r[4] + m
+end
+
+--- Which node pins a map shows right now: mode ("off"|"dots"|"icons"), farm (shown route or nil).
+local function pinMode(which)
+    local s = ns.settings
+    local a = ns.Route:Shown()
+    if which == "mm" and a and a.preview then a = nil end -- previews are world-map only
+    if a then
+        local m = (which == "mm") and s.farmMinimap or s.farmWorld
+        if m == "dots" or m == "icons" then return m, a end
+        return "off", a
+    end
+    local m = (which == "mm") and s.minimapNodes or s.worldNodes
+    if m ~= "all" then return "off" end
+    return (s.pinStyle == "dots") and "dots" or "icons"
+end
+Pins.Mode = pinMode
+
+local function wanted(pt, t, farm)
     if not eligible(pt, t) then return false end
-    if mode == "goal" then return inGoal(t) end
+    if farm then return inGoal(t) and inArea(pt, farm) end
     return true
 end
 Pins.Wanted = wanted
 
-local function style(f, t, scale)
-    f.icon:SetTexture(DS:TypeIcon(t))
+local DOT = "Interface\\Common\\Indicator-Gray"
+local function style(f, t, scale, mode, world)
     local c = colorFor(t)
-    f.border:SetVertexColor(c[1], c[2], c[3], 1)
-    local size = 14 * (scale or 1) * ns.settings.pinScale
-    f:SetSize(size, size)
+    if mode == "dots" then
+        f.isDot = true
+        f.icon:SetTexture(DOT)
+        f.icon:SetTexCoord(0, 1, 0, 1)
+        f.icon:SetVertexColor(c[1], c[2], c[3], 1)
+        f.border:SetVertexColor(0, 0, 0, 0)
+        local size = (world and 6 or 7) * ns.settings.pinScale
+        f:SetSize(size, size)
+    else
+        f.isDot = nil
+        f.icon:SetTexture(DS:TypeIcon(t))
+        f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        f.icon:SetVertexColor(1, 1, 1, 1)
+        f.border:SetVertexColor(c[1], c[2], c[3], 0.9)
+        local size = 13 * (scale or 1) * ns.settings.pinScale
+        f:SetSize(size, size)
+    end
     f:SetAlpha(ns.settings.pinAlpha)
 end
 
@@ -149,15 +188,16 @@ end
 function Pins:RefreshMinimap()
     clear("mm")
     mmZone = P:MapID()
-    local mode = ns.settings.minimapNodes or "all"
+    local mode, farm = pinMode("mm")
     if mode == "off" or not mmZone or hiddenNow() then return end
+    if farm and farm.uiMap ~= mmZone then return end
     for _, pt in ipairs(DS:GetZoneNodes(mmZone)) do
         local t = DS:GetType(pt.t)
-        if wanted(mode, pt, t) then
+        if wanted(pt, t, farm) then
             local f = acquire()
             pt.map = mmZone
             f.data = pt
-            style(f, t, 1)
+            style(f, t, 1, mode, false)
             f.wx, f.wy = HBD:GetWorldCoordinatesFromZone(pt.x, pt.y, mmZone)
             HBDPins:AddMinimapIconMap(REF_MM, f, mmZone, pt.x, pt.y, false, false)
             active.mm[#active.mm + 1] = f
@@ -168,28 +208,21 @@ end
 function Pins:RefreshWorldMap()
     clear("wm")
     if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
-    local mode = ns.settings.worldNodes or "goal"
+    local mode, farm = pinMode("wm")
     if mode == "off" or hiddenNow() then return end
-    -- goal mode draws the farm zone's nodes (also visible on continent views, e.g. OpenMap)
-    local zone, flag
-    if mode == "goal" then
-        local shown = ns.Route:Shown()
-        if not shown then return end
-        zone, flag = shown.uiMap, SHOW_CONTINENT
-    else
-        zone, flag = WorldMapFrame:GetMapID(), 0
-    end
+    -- farming: only the farm area's goal nodes, on the zone map; otherwise the zone being viewed
+    local zone = farm and farm.uiMap or WorldMapFrame:GetMapID()
     if not zone or not ns.Zones[zone] then return end
     wmZone = zone
     local n = 0
     for _, pt in ipairs(DS:GetZoneNodes(zone)) do
         local t = DS:GetType(pt.t)
-        if wanted(mode, pt, t) then
+        if wanted(pt, t, farm) then
             local f = acquire()
             pt.map = zone
             f.data = pt
-            style(f, t, 1.1)
-            HBDPins:AddWorldMapIconMap(REF_WM, f, zone, pt.x, pt.y, flag)
+            style(f, t, 1.1, mode, true)
+            HBDPins:AddWorldMapIconMap(REF_WM, f, zone, pt.x, pt.y, 0)
             active.wm[#active.wm + 1] = f
             n = n + 1
             if n >= 1500 then break end
@@ -218,31 +251,48 @@ local function acquireWP()
     return f
 end
 
-local function styleWP(f, i, current, world)
+--- kind: "next" (gold, larger), "after" (the one after next, small), "stop" (tiny route dot)
+local function styleWP(f, kind, world)
     local r, g, b = ns.Theme.route[1], ns.Theme.route[2], ns.Theme.route[3]
-    local size = world and (current and 22 or 16) or (current and 14 or 8)
+    local size
+    if kind == "next" then size = world and 16 or 13
+    elseif kind == "after" then size = 8
+    else size = 6 end
     f:SetSize(size, size)
-    f.ring:SetVertexColor(0, 0, 0, 0.8)
-    f.dot:SetSize(size - 4, size - 4)
-    if current then f.dot:SetVertexColor(1, 0.85, 0.1, 1) else f.dot:SetVertexColor(r, g, b, 1) end
-    f.num:SetText(world and tostring(i) or "")
+    f.ring:SetVertexColor(0, 0, 0, kind == "stop" and 0.5 or 0.85)
+    f.dot:SetSize(size - (kind == "next" and 5 or 2), size - (kind == "next" and 5 or 2))
+    if kind == "next" then f.dot:SetVertexColor(1, 0.85, 0.1, 1) else f.dot:SetVertexColor(r, g, b, kind == "after" and 0.9 or 0.8) end
+    f.num:SetText("")
     f:SetAlpha(1)
 end
 
+--- World map: a small dot per stop and the next stop in gold. Minimap: only the next stop
+--- (pinned to the edge when it's out of range) and the one after it.
 function Pins:RefreshRoute()
     clear("rmm")
     clear("rwm")
     local a = ns.Route:Shown()
     if not a or not a.route or #a.route.points == 0 or hiddenNow() or not ns.settings.showRoute then return end
-    for i, p in ipairs(a.route.points) do
-        local cur = not a.preview and i == a.index
+    local pts = a.route.points
+    for i, p in ipairs(pts) do
         local fw = acquireWP()
-        styleWP(fw, i, cur, true)
+        styleWP(fw, (not a.preview and i == a.index) and "next" or "stop", true)
         HBDPins:AddWorldMapIconMap(REF_RWM, fw, a.uiMap, p.x, p.y, SHOW_CONTINENT)
         active.rwm[#active.rwm + 1] = fw
+    end
+    if a.preview then return end
+    local nxt = pts[a.index]
+    if nxt then
         local fm = acquireWP()
-        styleWP(fm, i, cur, false)
-        HBDPins:AddMinimapIconMap(REF_RMM, fm, a.uiMap, p.x, p.y, false, cur)
+        styleWP(fm, "next", false)
+        HBDPins:AddMinimapIconMap(REF_RMM, fm, a.uiMap, nxt.x, nxt.y, false, true)
+        active.rmm[#active.rmm + 1] = fm
+    end
+    local after = #pts > 1 and pts[a.index % #pts + 1]
+    if after then
+        local fm = acquireWP()
+        styleWP(fm, "after", false)
+        HBDPins:AddMinimapIconMap(REF_RMM, fm, a.uiMap, after.x, after.y, false, false)
         active.rmm[#active.rmm + 1] = fm
     end
 end
@@ -262,6 +312,8 @@ local function fade()
         end
     end
 end
+
+Pins._active = active -- tests / diagnostics
 
 function Pins:RefreshAll()
     Pins:RefreshMinimap()
@@ -293,7 +345,9 @@ function Pins:Init()
     ns:On("PLAYER_REGEN_ENABLED", function() if ns.settings.hideInCombat then all(Pins) end end)
     ns:On("SKILL_LINES_CHANGED", function() ns.After(0.2, function() all(Pins) end) end)
     if WorldMapFrame then
-        hooksecurefunc(WorldMapFrame, "OnMapChanged", function() if (ns.settings.worldNodes or "goal") == "all" then wmr(Pins) end end)
+        hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
+            if not ns.Route:Shown() and ns.settings.worldNodes == "all" then wmr(Pins) end
+        end)
         WorldMapFrame:HookScript("OnShow", function() wmr(Pins) end)
         WorldMapFrame:HookScript("OnHide", function()
             clear("wm")
