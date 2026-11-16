@@ -22,7 +22,28 @@ end
 -------------------------------------------------------------------------------
 -- translate route-zone coords to the map being displayed
 -------------------------------------------------------------------------------
+--- OpenMap (seamless world map) API, when OpenMap is loaded and its stitched map is showing.
+--- docs: github.com/openmap-world/openmap docs/api.md (major 1)
+local function openMap()
+    local OM = OpenMapAPI
+    if type(OM) == "table" and OM.major == 1 and OM.IsStitched then
+        local ok, on = pcall(OM.IsStitched)
+        if ok and on then return OM end
+    end
+end
+Overlay.OpenMapAPI = openMap
+
+--- Route-zone coords -> coords on the map under the world map's canvas. On OpenMap's stitched map the
+--- canvas belongs to whatever zone/continent the view is on, and points off it (outside 0..1) are kept.
 local function toMap(x, y, fromMap, toMapID)
+    local OM = openMap()
+    if OM then
+        local ok, u, v = pcall(OM.WorldFromMap, fromMap, x, y)
+        if ok and u then
+            local ok2, hx, hy = pcall(OM.MapFromWorld, toMapID, u, v)
+            if ok2 and hx then return hx, hy end
+        end
+    end
     if fromMap == toMapID then return x, y end
     local tx, ty = HBD:TranslateZoneCoordinates(x, y, fromMap, toMapID, true)
     return tx, ty
@@ -65,10 +86,18 @@ local function drawWorldMap()
         if r.rect then cx, cy = (r.rect[1] + r.rect[3]) / 2, (r.rect[2] + r.rect[4]) / 2
         elseif pts0 and pts0[1] then cx, cy = pts0[1].x, pts0[1].y end
         local tx, ty = toMap(cx, cy, a.uiMap, mapID)
-        if not tx or tx < -0.2 or tx > 1.2 or ty < -0.2 or ty > 1.2 then
+        local OM = openMap()
+        if not tx or (not OM and (tx < -0.2 or tx > 1.2 or ty < -0.2 or ty > 1.2)) then
             hideFrom(wmLines, 1) hideFrom(wmTex, 1)
             return
         end
+        -- stay above OpenMap's stitched art (it covers canvas frames below ArtTopLevel)
+        local level = wm:GetParent():GetFrameLevel() + 1500
+        if OM and OM.ArtTopLevel then
+            local ok, top = pcall(OM.ArtTopLevel)
+            if ok and type(top) == "number" then level = math.max(level, top + 10) end
+        end
+        if wm:GetFrameLevel() ~= level then wm:SetFrameLevel(level) end
         if s.showArea and r.rect then
             local x1, y1 = toMap(r.rect[1], r.rect[2], a.uiMap, mapID)
             local x2, y2 = toMap(r.rect[3], r.rect[4], a.uiMap, mapID)
@@ -111,6 +140,7 @@ local function drawWorldMap()
     hideFrom(wmTex, nt)
 end
 Overlay.DrawWorldMap = guard("world map", drawWorldMap)
+function Overlay:WorldMapLayer() return wm end -- tests / diagnostics
 
 local function setupWorldMap()
     if wm or not WorldMapFrame then return end
@@ -127,19 +157,59 @@ local function setupWorldMap()
     wm:SetScript("OnSizeChanged", function() Overlay.DrawWorldMap() end)
     hooksecurefunc(WorldMapFrame, "OnMapChanged", function() Overlay.DrawWorldMap() end)
     WorldMapFrame:HookScript("OnShow", function() Overlay.DrawWorldMap() end)
+    WorldMapFrame:HookScript("OnHide", function()
+        if Route.preview then Route:Preview(nil) end
+        if Overlay.restoreMain and ns.Main.frame then ns.Main.frame:Show() end
+        Overlay.restoreMain = nil
+    end)
+    -- OpenMap: redraw when its view moves or it switches between its map and Blizzard's
+    local OM = OpenMapAPI
+    if type(OM) == "table" and OM.major == 1 and OM.RegisterCallback then
+        pcall(OM.RegisterCallback, Overlay, "OpenMap_ViewChanged", function() Overlay.DrawWorldMap() end)
+        pcall(OM.RegisterCallback, Overlay, "OpenMap_StitchedChanged", function() Overlay.DrawWorldMap() end)
+    end
 end
 
 --- Open the world map at the farm zone (or a given zone). Works with OpenMap (same WorldMapFrame).
+--- With OpenMap's stitched map: glide its view to the farm area, zoomed so the area fills about a third.
+local function showOnOpenMap(OM, shown, uiMap)
+    local r = shown and shown.result
+    local x1, y1, x2, y2 = 0.3, 0.3, 0.7, 0.7
+    if r and r.rect then x1, y1, x2, y2 = r.rect[1], r.rect[2], r.rect[3], r.rect[4] end
+    local ok1, u1, v1 = pcall(OM.WorldFromMap, uiMap, x1, y1)
+    local ok2, u2, v2 = pcall(OM.WorldFromMap, uiMap, x2, y2)
+    if not (ok1 and ok2 and u1 and u2) then return false end
+    local span = math.max(math.abs(u2 - u1), math.abs(v2 - v1), 0.002)
+    local zoom = ns.Clamp(1 / (span * 3), 1, 40)
+    local ok, res = pcall(OM.ShowWorld, (u1 + u2) / 2, (v1 + v2) / 2, zoom)
+    return ok and res
+end
+
+--- Open the world map at the farm zone (or a given zone), with the route drawn. The Forager window is
+--- hidden while the map is open (it would cover it) and comes back when the map closes.
 function Overlay:OpenMapTo(uiMap)
     local shown = Route:Shown()
     uiMap = uiMap or (shown and shown.uiMap) or P:MapID()
     if not uiMap or not WorldMapFrame then return end
+    if ns.Main.frame and ns.Main.frame:IsShown() then
+        ns.Main.frame:Hide()
+        Overlay.restoreMain = true
+    end
     if not WorldMapFrame:IsShown() then
         if OpenWorldMap then pcall(OpenWorldMap, uiMap)
         elseif ToggleWorldMap then pcall(ToggleWorldMap) end
     end
-    if WorldMapFrame.SetMapID then pcall(WorldMapFrame.SetMapID, WorldMapFrame, uiMap) end
+    local OM = openMap()
+    if not (OM and showOnOpenMap(OM, shown, uiMap)) and WorldMapFrame.SetMapID then
+        pcall(WorldMapFrame.SetMapID, WorldMapFrame, uiMap)
+    end
     Overlay.DrawWorldMap()
+    -- OpenMap builds its stitched map on first showing: centre on the farm again once it's up
+    ns.After(0.3, function()
+        local om = openMap()
+        if om and WorldMapFrame:IsShown() then showOnOpenMap(om, Route:Shown(), uiMap) end
+        Overlay.DrawWorldMap()
+    end)
 end
 
 -------------------------------------------------------------------------------

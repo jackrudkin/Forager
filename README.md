@@ -14,6 +14,8 @@ Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). For
 
 Settings from earlier versions are upgraded automatically, and the old pin settings are removed.
 
+**1.3.1:** **Show on world map** now shows the route with OpenMap. Forager uses OpenMap's API to position the line and draws it above OpenMap's map art, which had been covering it. With OpenMap's map showing, the view glides to the farm area. The Forager window hides while the map is open and comes back when you close the map. A preview clears when the map closes.
+
 ## What's new in 1.1
 
 | Change | Details |
@@ -96,7 +98,7 @@ No public data source has positions for cave interiors (Questie and CMaNGOS spaw
 - **Show on world map** previews a result without starting it. The preview disappears when you close the map.
 - **Open world map** (HUD, Now farming card, Route & Map, `/forage map`) opens the map at the farm zone.
 - **No node pins** anywhere; nodes are the game's own tracking.
-- **OpenMap** runs inside the normal `WorldMapFrame`. Its source code (GitHub) wasn't available while this was written. Forager draws the route on the map canvas, translated to the displayed map ID, which also covers continent views. If the route doesn't appear in OpenMap, turn on **Game map pin when starting** (OpenMap draws map pins) and run `/forage diag` with the map open.
+- **OpenMap** (`OpenMapAPI`, [docs](https://github.com/openmap-world/openmap/blob/main/docs/api.md)): while OpenMap's stitched map is showing, route points are placed with `WorldFromMap` / `MapFromWorld`, and the route layer sits above `ArtTopLevel()` so OpenMap's art doesn't cover it. Opening the map glides the view to the farm with `ShowWorld`, and Forager redraws on `OpenMap_ViewChanged` / `OpenMap_StitchedChanged`. Without OpenMap, the route is translated to the displayed map with HereBeDragons. `/forage diag` shows the OpenMap state and the route layer's frame level.
 
 ## Goals
 
@@ -191,11 +193,12 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 31 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 32 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
-  - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps.
+  - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps;
+  - OpenMap (mocked API): positions, layer above its art, view glide, window hide/restore, preview cleared on close.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
@@ -208,7 +211,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 - Gold/hour is an estimate. It assumes you're the only farmer, that 30% of spawn points are live, and straight-line travel without terrain.
 - Lockpicking skill can't be read from the API, so it's assumed to be at the level cap.
 - Cave detection needs explored map areas or a visit. A cave's explored-map area also covers the ground around its entrance, so a few "cave" spawns may sit just outside.
-- OpenMap compatibility follows from how OpenMap is described, not from its source code (see above).
+- OpenMap support follows OpenMap's published API (major 1, version 4). It's tested against a mock of that API, not the live addon.
 - Sharing sends only node type, zone and position, never in instances. Trial accounts can't send addon messages on Forever.
 - Written against the documented Mainline/Forever API and tested in a simulated client. **It has not been run in the live Forever client yet.** If anything errors, `/forage debug` plus the error text will pinpoint it.
 
@@ -229,7 +232,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `C_MapExplorationInfo.GetExploredAreaIDsAtPosition`, `C_Map.GetAreaInfo` | Cave/subzone names at spawn points | Caves only from your visits |
 | `IsIndoors`, `GetSubZoneText` | Cave learning | No learning; explored areas still used |
 | `C_Map.GetMapArtLayers`, `GetMapArtLayerTextures` | Zone map previews | "Map preview unavailable" (lines still drawn) |
-| OpenMap showing lines drawn on the map canvas | Route in OpenMap | Turn on the game map pin; see `/forage diag` |
+| `OpenMapAPI` (major 1): `IsStitched`, `WorldFromMap`, `MapFromWorld`, `ArtTopLevel`, `ShowWorld`, callbacks | Route on OpenMap's map | Falls back to HereBeDragons translation; the line may be hidden under OpenMap's art |
 | Template `UICheckButtonTemplate`, `BackdropTemplate` | UI | Checkboxes / panel backgrounds missing (cosmetic) |
 | Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, preview dots, search, close | Blank texture (cosmetic) |
 | `C_Item.GetItemIconByID` for Forever-only items | Item icons in the window | Question-mark icon |

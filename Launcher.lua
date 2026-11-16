@@ -243,7 +243,12 @@ function ns.Diag()
         add("Caves learned in zone", #ns.Caves:List(m))
     end
     add("Map art API", (C_Map.GetMapArtLayers and C_Map.GetMapArtLayerTextures) and "yes" or "no")
-    add("OpenMap", addonLoaded("openmap") or "not loaded")
+    local OM = ns.Overlay.OpenMapAPI()
+    local layer = ns.Overlay:WorldMapLayer()
+    add("OpenMap", (addonLoaded("openmap") or "not loaded") .. (OpenMapAPI and (" · API v" .. tostring(OpenMapAPI.version)) or "")
+        .. (OM and (" · stitched, art top " .. tostring(OM.ArtTopLevel and OM.ArtTopLevel())) or ""))
+    add("Route layer", layer and string.format("level %d, %dx%d, %s", layer:GetFrameLevel(), layer:GetWidth(), layer:GetHeight(),
+        layer:IsVisible() and "visible" or "hidden") or "not created (world map canvas missing at login)")
     add("TomTom", TomTom and "loaded" or "not loaded")
     add("Prices", table.concat(ns.Prices:Available(), ", "))
     add("Database", ns.DS:HasBundled() and (ns.DS:CountBundledNodes() .. " spawn points") or "NOT LOADED")

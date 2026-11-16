@@ -321,6 +321,39 @@ test("maps: no node pins, just the route", function()
     assertTrue(M.userWaypoint == nil, "cleared on stop")
 end)
 
+test("OpenMap: route above its art, positions via its API, view glides to the farm", function()
+    local calls = {}
+    OpenMapAPI = {
+        major = 1, version = 4,
+        IsStitched = function() return true end,
+        WorldFromMap = function(map, x, y) return 0.4 + x * 0.05, 0.3 + y * 0.05 end,
+        MapFromWorld = function(map, u, v) calls.mapFromWorld = (calls.mapFromWorld or 0) + 1 return (u - 0.38) * 10, (v - 0.28) * 10 end,
+        ArtTopLevel = function() return 3200 end,
+        ShowWorld = function(u, v, zoom) calls.show = { u, v, zoom } return true end,
+        RegisterCallback = function() end,
+    }
+    local best = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })[1]
+    ns.Main:Toggle("farm")
+    assertTrue(ns.Main.frame:IsShown(), "window open")
+    ns.Route:Preview(best)
+    ns.Overlay.lastError = nil
+    WorldMapFrame._shown = false
+    ns.Overlay:OpenMapTo(best.uiMap)
+    M.RunTimers()
+    assertTrue(not ns.Main.frame:IsShown(), "Forager window hidden while the map is open")
+    assertTrue(calls.show and calls.show[3] >= 1 and calls.show[3] <= 40, "OpenMap view glides to the farm")
+    M.worldMapID = 1415 -- OpenMap's host map can be a neighbouring zone or continent
+    ns.Overlay.DrawWorldMap()
+    assertTrue(ns.Overlay.lastError == nil, "draw error: " .. tostring(ns.Overlay.lastError))
+    assertTrue((calls.mapFromWorld or 0) > 0, "positions from OpenMap's API")
+    assertTrue(ns.Overlay:WorldMapLayer():GetFrameLevel() > 3200, "route layer above OpenMap's art")
+    WorldMapFrame:Hide()
+    assertTrue(ns.Route.preview == nil, "preview cleared when the map closes")
+    assertTrue(ns.Main.frame:IsShown(), "Forager window back after the map closes")
+    ns.Main.frame:Hide()
+    OpenMapAPI = nil
+end)
+
 test("settings migration to v4 (route only)", function()
     local savedDB, savedBackup = ForagerDB, ForagerBackupDB
     ForagerBackupDB = nil

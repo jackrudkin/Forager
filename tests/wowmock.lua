@@ -52,7 +52,9 @@ function frameMethods:SetHeight(h) self._h = h end
 function frameMethods:GetSize() return self._w, self._h end
 function frameMethods:GetScale() return 1 end
 function frameMethods:GetEffectiveScale() return 1 end
-function frameMethods:GetFrameLevel() return 1 end
+function frameMethods:GetFrameLevel() return self._level or 1 end
+function frameMethods:SetFrameLevel(l) self._level = l end
+function frameMethods:GetParent() return self._parent end
 function frameMethods:GetCenter() return 100, 100 end
 function frameMethods:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
 function frameMethods:SetText(t) self._text = t end
