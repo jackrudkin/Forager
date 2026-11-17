@@ -1,5 +1,5 @@
--- Prices: AuctionTrends (optional) -> Auctionator (optional) -> vendor. Read-only; never touches
--- Auctionator's data or frames.
+-- Prices: AuctionTrends (optional) -> Auctionator (optional) -> TradeSkillMaster (optional) -> vendor.
+-- Read-only; never touches Auctionator's or TSM's data or frames.
 local _, ns = ...
 local Prices = {}
 ns.Prices = Prices
@@ -20,9 +20,19 @@ local function fromAuctionator(itemID)
     if ok and type(v) == "number" and v > 0 then return v end
 end
 
+-- TradeSkillMaster public API: TSM_API.GetCustomPriceValue(priceString, "i:<itemID>")
+-- (api.tradeskillmaster.com/addon). The price string is a setting, DBMarket by default.
+local function fromTSM(itemID)
+    local api = TSM_API
+    if not api or not api.GetCustomPriceValue then return nil end
+    local ok, v = pcall(api.GetCustomPriceValue, ns.settings.tsmPrice or "dbmarket", "i:" .. itemID)
+    if ok and type(v) == "number" and v > 0 then return v end
+end
+
 local sources = {
     AuctionTrends = fromAuctionTrends,
     Auctionator = fromAuctionator,
+    TSM = fromTSM,
     Vendor = function(itemID) local v = ns.DS:ItemVendor(itemID) return v > 0 and v or nil end,
 }
 
@@ -33,7 +43,7 @@ function Prices:Get(itemID)
     if now - cacheTime > 60 then wipe(cache) cacheTime = now end
     local c = cache[itemID]
     if c then return c[1], c[2] end
-    for _, name in ipairs(ns.settings.priceSources or { "AuctionTrends", "Auctionator", "Vendor" }) do
+    for _, name in ipairs(ns.settings.priceSources or { "AuctionTrends", "Auctionator", "TSM", "Vendor" }) do
         local fn = sources[name]
         local v = fn and fn(itemID)
         if v then
@@ -53,10 +63,14 @@ function Prices:SalesRate(itemID)
     if ok then return a, b, c end
 end
 
+--- Forget cached prices (price settings changed).
+function Prices:Flush() wipe(cache) cacheTime = 0 end
+
 function Prices:Available()
     local out = {}
     if AuctionTrends and AuctionTrends.API then out[#out + 1] = "AuctionTrends" end
     if Auctionator and Auctionator.API and Auctionator.API.v1 then out[#out + 1] = "Auctionator" end
+    if TSM_API and TSM_API.GetCustomPriceValue then out[#out + 1] = "TSM" end
     out[#out + 1] = "Vendor"
     return out
 end

@@ -100,7 +100,7 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     slider(0, "Seconds per kill", "comboKillSeconds", 10, 90, 5, function(v) return v .. " s" end,
         "Fight + loot for a mob of your level. Lower-level mobs count as faster.")
     slider(202, "Seconds per skin", "comboSkinSeconds", 0, 10, 0.5, function(v) return v .. " s" end,
-        "Extra time to skin a mob (cast + loot). Only for mobs you can skin.")
+        "Extra time to skin a mob (cast + loot). Only for mobs you can skin. Once Forager has measured 10 of your skins it uses your real time instead.")
     slider(404, "Reach from the route", "comboPullYards", 15, 60, 5, function(v) return v .. " yd" end,
         "Mobs and nodes this close to the route count as on the way.")
     slider(606, "Mob respawn", "comboRespawn", 60, 900, 30, function(v) return math.floor(v / 60) .. ":" .. string.format("%02d", v % 60) end,

@@ -18,7 +18,7 @@ Main:RegisterTab("nodes", "Nodes", "Interface\\Icons\\INV_Ore_Copper_01", functi
         { key = "kind", label = "Type", width = 60, get = function(r) return r.t.kind end, sort = function(r) return r.t.kind end },
         { key = "skill", label = "Skill", width = 50, align = "CENTER", get = function(r)
             local have = ns.Player:Skill(r.t.kind)
-            return "|cff" .. ns.ColorHex[ns.SkillColor(r.t.skill or 0, have)] .. (r.t.skill or 0) .. "|r"
+            return "|cff" .. ns.ColorHex[ns.NodeSkillColor(r.t, have)] .. (r.t.skill or 0) .. "|r"
         end, sort = function(r) return r.t.skill or 0 end },
         { key = "db", label = "Database", width = 70, align = "RIGHT", get = function(r) return r.bundled end, sort = function(r) return r.bundled end },
         { key = "learned", label = "Learned", width = 70, align = "RIGHT", get = function(r) return r.learned end, sort = function(r) return r.learned end },
@@ -27,10 +27,23 @@ Main:RegisterTab("nodes", "Nodes", "Interface\\Icons\\INV_Ore_Copper_01", functi
         { key = "value", label = "Value/node", width = 90, align = "RIGHT", get = function(r) return ns.Money(r.value) end, sort = function(r) return r.value end },
     }
     local tbl = UI.Table(panel, cols, 19, nil, function(owner, r)
-        local lines = { { "Required skill", r.t.skill or 0 } }
-        for _, y in ipairs(r.t.yields or {}) do lines[#lines + 1] = { ns.DS:ColoredItem(y[1]), string.format("%.2f per gather", y[2]) } end
-        if (r.t.taps or 1) > 1 then lines[#lines + 1] = { "Gathers per node", string.format("%.1f", r.t.taps) } end
-        UI.Tip(owner, r.t.name, lines)
+        local t = r.t
+        local info = ns.Learn:NodeInfo(t)
+        local th = ns.SkillThresholds[t.name]
+        local o = ns.SkillOffsetsByKind[t.kind] or ns.SkillOffsets
+        local s0 = t.skill or 0
+        local lines = { { "Skill (orange/yellow/green/grey)", th and string.format("%d / %d / %d / %d", s0, th[1], th[2], th[3])
+            or string.format("%d / %d / %d / %d", s0, s0 + o[1], s0 + o[2], s0 + o[3]) } }
+        lines[#lines + 1] = { "Per node", info.learned and ("|cff7fd36bmy data, " .. info.n .. " visits|r")
+            or ("|cff9d9d9dClassic est." .. (info.n > 0 and (", me " .. info.n .. "/" .. (ns.settings.minSamples or 30)) or "") .. "|r") }
+        for _, y in ipairs(info.perNode) do lines[#lines + 1] = { "  " .. ns.DS:ColoredItem(y[1]), string.format("%.2f", y[2]) } end
+        if info.scarce and not info.scarceRate then
+            lines[#lines + 1] = { "  " .. ns.DS:ColoredItem(info.scarce) .. " (Scarce)",
+                string.format("|cff9d9d9drate unpublished, learning %d/%d|r", info.scarceN or 0, ns.Learn.SCARCE_MIN) }
+        end
+        if info.taps > 1.05 then lines[#lines + 1] = { "Gathers per node", string.format("%.1f", info.taps) } end
+        lines[#lines + 1] = { "Seconds per node", string.format("%.1f", info.secs) }
+        UI.Tip(owner, t.name, lines)
     end)
     tbl:SetPoint("TOPLEFT", 0, -30)
     tbl.sortKey = "skill"

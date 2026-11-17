@@ -55,8 +55,12 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     slider(2, "Live share of spawn points", "activeFraction", 0.1, 0.8, 0.05, pct)
     slider(2, "Kills per hour (equal level)", "killsPerHour", 15, 120, 5)
     slider(2, "Fishing casts per hour", "castsPerHour", 100, 400, 10)
-    slider(2, "Seconds per gather", "gatherSeconds", 1, 8, 0.5)
+    slider(2, "Extra seconds per node (dismount, walk in)", "gatherSeconds", 0, 6, 0.5)
     slider(2, "My data replaces estimates at n =", "minSamples", 5, 200, 5)
+    local learned = UI.Muted(panel, "")
+    learned:SetWidth(300)
+    learned:SetJustifyH("LEFT")
+    place(2, learned, 30)
     place(2, UI.Muted(panel, "Travel speed"), 16)
     place(2, UI.Dropdown(panel, 170, function()
         return { { text = "Auto (by level)", value = "auto" }, { text = "Running (7 yd/s)", value = "run" },
@@ -73,18 +77,40 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     place(3, UI.Header(panel, "Prices"), 22)
     local prices = UI.Muted(panel, "")
     place(3, prices, 18)
+    local ORDERS = {
+        ATAV = { "AuctionTrends", "Auctionator", "TSM", "Vendor" },
+        AATV = { "Auctionator", "AuctionTrends", "TSM", "Vendor" },
+        TSM = { "TSM", "AuctionTrends", "Auctionator", "Vendor" },
+        V = { "Vendor" },
+    }
     place(3, UI.Dropdown(panel, 240, function()
         return {
-            { text = "AuctionTrends > Auctionator > Vendor", value = "ATAV" },
-            { text = "Auctionator > AuctionTrends > Vendor", value = "AATV" },
+            { text = "AuctionTrends > Auctionator > TSM > Vendor", value = "ATAV" },
+            { text = "Auctionator > AuctionTrends > TSM > Vendor", value = "AATV" },
+            { text = "TSM > AuctionTrends > Auctionator > Vendor", value = "TSM" },
             { text = "Vendor only", value = "V" },
         }
     end, function()
         local p = S().priceSources
         if #p == 1 then return "V" end
+        if p[1] == "TSM" then return "TSM" end
         return p[1] == "Auctionator" and "AATV" or "ATAV"
     end, function(v)
-        S().priceSources = (v == "V" and { "Vendor" }) or (v == "AATV" and { "Auctionator", "AuctionTrends", "Vendor" }) or { "AuctionTrends", "Auctionator", "Vendor" }
+        S().priceSources = ns.CopyTable(ORDERS[v] or ORDERS.ATAV)
+        ns.Prices:Flush()
+        ns:Fire("FORAGER_GOAL_CHANGED")
+    end), 30)
+    place(3, UI.Muted(panel, "TSM price"), 16)
+    place(3, UI.Dropdown(panel, 240, function()
+        return {
+            { text = "DBMarket (realm, 14-day)", value = "dbmarket" },
+            { text = "DBMinBuyout (realm, lowest now)", value = "dbminbuyout" },
+            { text = "DBRecent (realm, last scan)", value = "dbrecent" },
+            { text = "DBRegionMarketAvg (region)", value = "dbregionmarketavg" },
+        }
+    end, function() return S().tsmPrice end, function(v)
+        S().tsmPrice = v
+        ns.Prices:Flush()
         ns:Fire("FORAGER_GOAL_CHANGED")
     end), 30)
     place(3, UI.Header(panel, "Sharing (off by default)"), 22)
@@ -100,5 +126,8 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
 
     panel.OnActivate = function()
         prices:SetText("Available: " .. table.concat(ns.Prices:Available(), ", "))
+        local times, types, ready = ns.Learn:Summary()
+        learned:SetText(string.format("Cast times: %s\nYour yields: %d node types, %d with n >= %d", times ~= "" and times or "none yet",
+            types, ready, S().minSamples or 30))
     end
 end)

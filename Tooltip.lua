@@ -1,6 +1,6 @@
 -- Mob tooltip: skinnable + required skill, skin item chances, cloth/meat/elemental drops,
 -- gear grade chances (green/blue/purple) with disenchant hint, pick pocket boxes.
--- Bundled rates are Classic-era estimates; own observations replace them from minSamples.
+-- Bundled rates are Classic-era estimates (+ Forever Scarce where sourced); own observations replace them from minSamples.
 local _, ns = ...
 local Tooltip = {}
 ns.Tooltip = Tooltip
@@ -26,7 +26,7 @@ local function rates(bundled, ownCounts, ownTotal, minSamples)
         table.sort(out, function(a, b) return a[2] > b[2] end)
         return out, "|cff7fd36bmy data n=" .. ownTotal .. "|r"
     end
-    local label = GREY .. "Classic est." .. ((ownTotal and ownTotal > 0) and (" | me n=" .. ownTotal) or "") .. "|r"
+    local label = GREY .. "estimate" .. ((ownTotal and ownTotal > 0) and (" | me n=" .. ownTotal) or "") .. "|r"
     if not bundled or #bundled == 0 then
         if ownTotal and ownTotal > 0 and ownCounts then
             local out = {}

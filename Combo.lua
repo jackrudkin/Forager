@@ -84,19 +84,20 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
         return inCorridor(segs, p.x * w, p.y * h, R2)
     end
     -- nodes you pass (on the route or within reach of it)
-    local nodeOn, nodeV, nodeG, nodeSU, byType = {}, 0, 0, 0, {}
+    local nodeOn, nodeV, nodeG, nodeSU, byType, gatherT = {}, 0, 0, 0, {}, 0
     for _, p in ipairs(nodes) do
         if near(p) then
             nodeOn[#nodeOn + 1] = p
             nodeV = nodeV + p.v * ctx.active
             nodeG = nodeG + p.g * ctx.active
             nodeSU = nodeSU + p.su * ctx.active
+            gatherT = gatherT + p.secs * ctx.active
             byType[p.t] = (byType[p.t] or 0) + 1
         end
     end
     local liveNodes = #nodeOn * ctx.active
     local walk = route.length / ctx.speed
-    local gather = liveNodes * ctx.gatherSec
+    local gather = gatherT
     -- mobs you pass, per type
     local types, mobOn = {}, {}
     for _, p in ipairs(mobs) do
@@ -209,8 +210,8 @@ local function itemsPerHour(r, sim, info, level)
     end
     for tk, c in pairs(sim.byType) do
         local t = DS:GetType(tk)
-        for _, y in ipairs(t and t.yields or {}) do
-            local q = c * r.active * y[2] * (t.taps or 1) * loops
+        for _, y in ipairs(t and ns.Learn:NodeInfo(t).perNode or {}) do
+            local q = c * r.active * y[2] * loops
             add(y[1], { id = y[1], node = true }, q, q * priceOf(y[1]))
         end
     end
@@ -242,7 +243,7 @@ local function mobInfo(m, lf, ctx, skills, lootSkills, level)
     local skinG, su, col = 0, 0, nil
     if skinOK then
         for _, e in ipairs(m.skin) do skinG = skinG + e[2] * priceOf(e[1]) end
-        col = ns.SkillColor(req, have)
+        col = ns.SkillColor(req, have, "skin")
         su = ns.SkillUpChance[col] or 0
     elseif req and have then
         col = "red"
@@ -267,13 +268,14 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         local t = DS:GetType(pt.t)
         if t and kinds[t.kind] and allowed(loc, uiMap, pt.x, pt.y) then
             local have = skills[t.kind]
-            local col = have and ns.SkillColor(t.skill or 0, have)
+            local col = have and ns.NodeSkillColor(t, have)
             if col and col ~= "red" then
+                local info = ns.Learn:NodeInfo(t)
                 local g = ns.Finder:NodeValue(t)
-                local su = (ns.SkillUpChance[col] or 0) * (t.taps or 1)
+                local su = (ns.SkillUpChance[col] or 0) * info.taps
                 local v = ctx.mode == "skill" and su or g
                 if v > 0 then
-                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, g = g, su = su, w = v * ctx.active }
+                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, g = g, su = su, secs = info.secs, w = v * ctx.active }
                     minSkill = math.min(minSkill or 999, t.skill or 0)
                 end
             end
@@ -302,6 +304,8 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     -- shortlist windows: best for nodes alone, and best for nodes + mobs (rough weights)
     local W = ns.Clamp(math.floor((loc == "cave" and 450 or 800) / (P:ZoneSize(uiMap) / GRID) + 0.5), 2, 9)
     local gNodes, gBoth = newGrid(), newGrid()
+    local avgSecs = 0
+    for _, p in ipairs(nodes) do avgSecs = avgSecs + p.secs / #nodes end
     for _, p in ipairs(nodes) do
         local cx, cy = cell(p.x, p.y)
         gNodes[cy * GRID + cx] = gNodes[cy * GRID + cx] + p.w
@@ -311,7 +315,7 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         local cx, cy = cell(p.x, p.y)
         local inf = info[p.npc]
         -- a kill costs killT; weigh it like the same time spent gathering
-        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * ctx.gatherSec / inf.killT * ctx.active
+        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * avgSecs / inf.killT * ctx.active
     end
     local cands = topWindows(gNodes, W, 3)
     for _, c in ipairs(topWindows(gBoth, W, 3)) do
@@ -414,7 +418,7 @@ local function evalZone(uiMap, gather, opts, ctx, out)
             unitsPerHour = sim.kills * k, unitLabel = "kills/h",
             mobs = mobsList, worthy = worthy, skipped = skipped, minSkill = minSkill, minSkin = minSkin,
             minLevel = maxL > 0 and minL or nil, maxLevel = maxL > 0 and maxL or nil, active = ctx.active,
-            zoneName = zone.name, zoneMin = zone.min, zoneMax = zone.max, confidence = "Classic estimate",
+            zoneName = zone.name, zoneMin = zone.min, zoneMax = zone.max, confidence = ns.Finder.YieldSource(sim.byType),
             assumedSkin = ctx.assumedSkin,
         }
         r.items = itemsPerHour(r, sim, info, level)
@@ -452,9 +456,12 @@ function Combo:Run(opts)
         local z1, z2 = ns.Quests:Zones()
         opts.zones = { z1, z2 }
     end
+    -- skinning time: your measured cast + loot once Forager has 10 skins, else the slider
+    local skinCast, skinSrc = ns.Learn:CastSeconds("skin")
+    local skinSec = (skinSrc == "me") and (skinCast + (ns.Learn:LootSeconds("skin"))) or s.comboSkinSeconds
     local ctx = {
-        speed = P:Speed(), active = s.activeFraction, gatherSec = s.gatherSeconds,
-        killSec = s.comboKillSeconds, skinSec = s.comboSkinSeconds, pull = s.comboPullYards,
+        speed = P:Speed(), active = s.activeFraction,
+        killSec = s.comboKillSeconds, skinSec = skinSec, skinMeasured = skinSrc == "me", pull = s.comboPullYards,
         respawn = math.max(30, s.comboRespawn), mode = opts.mode or Combo:Mode(), killFor = killFor, assumedSkin = assumedSkin,
     }
     local out = {}

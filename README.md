@@ -4,6 +4,22 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 1.7: more accurate numbers
+
+The data was researched against Forever sources. Wherever Forever data exists it now replaces the Classic values, and from now on Forager learns from your own play. See [Data sources & accuracy](#data-sources--accuracy).
+
+| Change | Before | Now |
+|---|---|---|
+| Time at each node | Flat 3 s per node, even for mining veins that take several gathers | Cast time × gathers per node. Herb Gathering is 5 s and Mining 3.2 s per gather (Classic spell data). Forager measures your own casts and loot time, and uses them from 10 casts |
+| Herbalism skill colours | Classic: green from required +50 | Forever: herbs stay yellow until required +65 (warcraft.wiki.gg herb table). Dreamfoil uses its own 270/290/340/370 |
+| Yields per node | CMaNGOS Classic loot tables only | Your own yields per node type take over at n ≥ 30 visits (setting). This includes Scarce finds and Forever's real number of gathers per vein. Gathers you logged before 1.7 seed this |
+| Scarce materials | Not counted | All nine are known (IDs, vendor prices): Frilled Lichen, Rosecap, Stranglevine, Pyrite, Bauxite, Pitchblende, Pristine Leather/Hide/Scale. Herb and ore rates aren't published anywhere, so Forager learns them (pooled per material, from 100 gathers). Pristine Leather starts at 2.9% for beasts level 10–26 |
+| Skins | Classic table | Your own skins of a mob, quantities included, take over at n ≥ 30. Skinning time uses your measured skins from 10 |
+| Prices | AuctionTrends → Auctionator → vendor | **TradeSkillMaster** added: AuctionTrends → Auctionator → TSM → vendor. TSM price is DBMarket by default, or DBMinBuyout / DBRecent / DBRegionMarketAvg (Settings) |
+| Source label | "Classic spawns" | Results say whether yields are your own data: "Classic spawns · your yields" |
+
+The **Seconds per gather** setting is now **Extra seconds per node** (dismount, walk in), default 1 s, because casts and loot are timed separately. Settings and node data upgrade automatically.
+
 ## What's new in 1.6: risk level
 
 Every spot in Farm, Gather + Kill and Mobs & Drops ("Farm this mob") now shows a **risk level**: Low / Medium / High / Very high. Hover it to see why. See [Risk level](#risk-level).
@@ -128,7 +144,7 @@ Each area is scored on one loop of its route, with **time as the shared budget**
 | Part of the loop | Time | Income |
 |---|---|---|
 | Walking | route length ÷ speed | — |
-| Gathering | live nodes within reach of the route × seconds per gather | node value × live share (30%) |
+| Gathering | live nodes within reach of the route × seconds per node (casts × gathers per node + loot + extra) | node value × live share (30%) |
 | Fighting | mobs killed × (seconds per kill + seconds per skin if you skin it), faster for lower-level mobs, +½ reach walked per pull | loot (drops, coin, disenchant value of greens/blues) + skins if your Skinning ≥ the mob's requirement |
 
 **Gold/hour** = (node income + mob income) × 3600 ÷ (walk + gather + fight). Shown as gathering + skins + other loot.
@@ -153,7 +169,7 @@ Each area is scored on one loop of its route, with **time as the shared budget**
 
 The card shows the gain over the better of the two. If just killing pays more, the detail panel says so.
 
-Defaults you can change in the tab: 30 s per kill, 3 s per skin, 30 yd reach, 5 min respawn. Live share and seconds per gather come from Settings → Finder assumptions.
+Defaults you can change in the tab: 30 s per kill, 3 s per skin (your measured skins replace it from 10), 30 yd reach, 5 min respawn. Live share and extra seconds per node come from Settings → Finder assumptions.
 
 **Limitations:** it uses Classic spawn points and loot tables, distances are straight lines, and mobs you skip can still aggro. **Both** routes through herbs and ore, but you can only track one of them at a time.
 
@@ -238,14 +254,17 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## How the numbers are calculated
 
-- **Value per gather** = Σ (expected count per open × price) × gathers per node (multi-tap ore veins), from the node's CMaNGOS loot table.
-- **Prices:** AuctionTrends `GetMarketValue` → Auctionator `GetAuctionPriceByItemID` → vendor price (order set in Settings). Forager only reads them and never touches Auctionator.
+- **Value per node** = Σ (expected count per node × price).
+  - With 30+ of your own visits to that node type (setting): your own items per visit, all items including Scarce finds.
+  - Otherwise: the node's CMaNGOS loot table × gathers per node (multi-tap ore veins), plus a Scarce item at your pooled rate once you've logged 100 gathers of the nodes that give it.
+- **Prices:** AuctionTrends `GetMarketValue` → Auctionator `GetAuctionPriceByItemID` → TradeSkillMaster `TSM_API.GetCustomPriceValue` (DBMarket by default) → vendor price (order set in Settings). Forager only reads them and never touches Auctionator or TSM.
 - **Area:** each zone is split into a 20 × 20 grid. Forager picks the window of cells, about 800 yards across (450 in Caves & mines), with the highest total value (or skill-up chance). Up to 2 areas per zone (4 in questing mode). In cave mode the area shrinks to the cave's spawn points.
 - **Item goals:** node areas are weighted by expected count × price of that item, mob camps by drop chance × price (by chance if the item has no price), fishing zones by catch rate. If the item has no price, results are ranked by quantity per hour.
 - **Route:** up to 40 of the best points in the area, at least 25 yd apart, in a closed loop (nearest neighbour + 2-opt). Mob routes go through up to 14 camp centres. Distances come from HereBeDragons zone sizes.
 - **Gold/hour (nodes)** = live nodes per loop × value per node × loops per hour.
   - Live nodes = spawn points × live share (default 30%).
-  - Loop time = route length ÷ speed + live nodes × seconds per gather (default 3 s).
+  - Loop time = route length ÷ speed + Σ live nodes × seconds per node.
+  - Seconds per node = gathers per node × (cast + loot) + extra (default 1 s). Cast is your measured average from 10 casts, else Herb Gathering 5 s / Mining 3.2 s. Loot is your measured loot-window time, else 0.
   - Speed: Auto = running 7 yd/s below level 40, otherwise 60% mount 11.2 yd/s.
 - **Gold/hour (mobs)** = kills/hour × value per kill.
   - Kills/hour = setting (default 45) × density, where density = min(1, spawns in area ÷ 25) × level factor.
@@ -254,11 +273,31 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
   - **Gold/kill** in Mobs & Drops = every drop × price + average coin + disenchant value of greens/blues + skins if you have Skinning.
 - **Greens:** P(green) × expected green disenchant value + P(blue) × expected blue disenchant value. The disenchant table follows Classic armour splits by item level. If enchanting mats have no AH price, an estimated vendor value (0.7 × ilvl² copper) is used instead.
 - **Gear grade %:** P(at least one green, blue or epic weapon/armour) per kill. This combines independent loot rows as 1 − Π(1 − p) and adds up the chances inside each loot group, including shared world-drop reference tables.
-- **Skill-ups/hour:** chance per gather by colour — orange 100%, yellow 75%, green 25%, grey 0. Herb/ore colour thresholds are required skill +25/+50/+100.
+- **Skill-ups/hour:** chance per gather by colour — orange 100%, yellow 75%, green 25%, grey 0.
+  - Ore and skinning colour thresholds: required +25/+50/+100 (same as Classic).
+  - Herbs (Forever): required +25/+65/+100; Dreamfoil 290/340/370. Skill-1 nodes use 25/50/100 (ore) and 25/65/100 (herbs).
   - Fishing is rough: min(1, (300 − skill)/300 + 0.05) × 0.6 per catch.
   - Lockpicking: junkbox chance × colour chance. Rogue skill is assumed to be level × 5, which is the cap.
 - **Questing score** = rate × loop time ÷ (loop time + 2 × distance to nearest quest objective ÷ speed).
 - **Session gold/hour** = value of everything you looted at current prices, plus coin, ÷ session time.
+
+## Data sources & accuracy
+
+What each number comes from, and how sure it is.
+
+| Data | Source | Forever-specific? |
+|---|---|---|
+| Node, mob and NPC spawn points, mob levels, NPC factions | QuestieDB Forever database. Its node and NPC tables were last updated on 11 Oct 2026; Questie's Forever coordinates are converted from Classic Era sources | Partly: Forever's new zones and nodes have few or no spawn points yet. Your gathers, your guild (sharing) and imports fill the gaps |
+| Node yields, gathers per vein, mob loot and skins | CMaNGOS classic-db (Classic) | No, so your own data replaces them at n ≥ 30 |
+| Scarce materials (IDs, vendor prices, which nodes give which) | warcraft.wiki.gg Forever herbalism/mining techniques, wowgoldfarms.com, wow-professions.com (Thorium → Pitchblende) | Yes. Drop rates for herbs and ore are unpublished, so they're learned |
+| Pristine Leather start rate | 29 per 1,000 skins of level 22–26 Barrens beasts (nerdflakes.com); beasts level 10–26 (classicwowforever.com) | One community log; your skins replace it from 100 in that band |
+| Herb skill colours | warcraft.wiki.gg Forever herb table (yellow → green moved 15 points later) | Yes |
+| Ore and skinning skill colours, skinning skill formula | warcraft.wiki.gg Forever mining/skinning techniques | Yes (same as Classic, plus the Forever skinning formula) |
+| Cast times | classicdb.ch: Herb Gathering 5 s, Mining 3.2 s | Classic. Your measured casts replace them from 10 |
+| Prices | Your AuctionTrends / Auctionator scans, TSM, vendor | Live |
+| Mob respawn | Slider (default 5:00) | Forever adjusted respawn rates for launch, especially in starting zones, and no numbers are published |
+
+Not changed, because no better data was found: node spawn positions (Forever reduced Poor Copper Veins in starter areas, but the new positions aren't in any open database), mob kill times (Forever raised enemy health on 2 Nov; set **Seconds per kill** to match your character), and dynamic respawn.
 
 ## Your data survives updates
 
@@ -275,7 +314,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 35 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 40 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -283,7 +322,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
   - OpenMap (mocked API): positions, layer above its art, view glide, window hide/restore, preview cleared on close;
   - Gather + Kill: split and loop time add up, never below gathering alone, worthy/skipped mobs on the right side of the loop rate, slower kills never raise the rate, ore/herb/both, start as a farm;
   - Gather + Kill skinning: skins only within your skill, skin-only mode, no skins without Skinning, skin time never helps, skill-ups split and best-ratio property, both modes render;
-  - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI.
+  - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI;
+  - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
@@ -291,7 +331,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Known limitations
 
-- Spawns and loot rates are Classic-era. Forever changed some itemization (world epics, rare spawns), so gear-grade rates for rares may be off. Your own data takes over at n ≥ 30.
+- Spawns and loot rates are Classic-era (see [Data sources & accuracy](#data-sources--accuracy)). Forever changed some itemization (world epics, rare spawns), so gear-grade rates for rares may be off. Your own data takes over at n ≥ 30.
 - New Forever zones and node types are learned only as you, your guild or imports find them.
 - Gold/hour is an estimate. It assumes you're the only farmer, that 30% of spawn points are live, and straight-line travel without terrain.
 - Lockpicking skill can't be read from the API, so it's assumed to be at the level cap.
@@ -322,6 +362,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | Template `UICheckButtonTemplate`, `BackdropTemplate` | UI | Checkboxes / panel backgrounds missing (cosmetic) |
 | Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, preview dots, search, close | Blank texture (cosmetic) |
 | `C_Item.GetItemIconByID` for Forever-only items | Item icons in the window | Question-mark icon |
+| `UNIT_SPELLCAST_START` / `SUCCEEDED` / `INTERRUPTED` for gather spells | Measured cast times | Classic cast times stay in use |
+| `TSM_API.GetCustomPriceValue` on Forever | TSM price source | Skipped; the next price source is used |
 
 ## Credits & licence
 

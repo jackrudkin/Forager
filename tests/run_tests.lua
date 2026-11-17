@@ -55,7 +55,7 @@ loadToc(BACKUP_DIR, "Forager_Backup.toc", "Forager_Backup", {})
 print("Tests:")
 test("login initialises DB, skills, data", function()
     M.Fire("PLAYER_LOGIN")
-    assertTrue(ns.db and ns.db.version == 4, "db")
+    assertTrue(ns.db and ns.db.version == 5, "db")
     assertTrue(ns.Player:Skill("herb") == 50, "herb skill")
     assertTrue(ForagerData and ForagerData.nodes, "data loaded")
 end)
@@ -215,6 +215,120 @@ test("capture skinning attributes to creature", function()
     M.Fire("LOOT_READY") M.Fire("LOOT_CLOSED")
     local m = ns.db.mobs[3245]
     assertTrue(m and m.s == 1 and m.si[2318] == 1)
+end)
+
+test("Forever skill colours: herbs stay yellow 15 points longer, Dreamfoil from the wiki", function()
+    assertTrue(ns.SkillColor(1, 60, "herb") == "yellow", "Peacebloom at 60 is yellow in Forever (1/25/65/100)")
+    assertTrue(ns.SkillColor(1, 60, "ore") == "green", "Copper at 60 is green (1/25/50/100)")
+    assertTrue(ns.SkillColor(1, 65, "herb") == "green" and ns.SkillColor(1, 100, "herb") == "grey", "herb green and grey")
+    local dream = ns.NodeTypes[24]
+    assertTrue(dream.name == "Dreamfoil", "type 24 is Dreamfoil")
+    assertTrue(ns.NodeSkillColor(dream, 289) == "orange" and ns.NodeSkillColor(dream, 295) == "yellow"
+        and ns.NodeSkillColor(dream, 345) == "green" and ns.NodeSkillColor(dream, 370) == "grey", "Dreamfoil 270/290/340/370")
+end)
+
+test("time per node: Classic cast times x gathers per vein, then your measured casts", function()
+    local copper, peace = ns.NodeTypes[34], ns.NodeTypes[1]
+    local ci, pi = ns.Learn:NodeInfo(copper), ns.Learn:NodeInfo(peace)
+    assertTrue(math.abs(ci.secs - (3 * 3.2 + 1)) < 0.01, "copper vein: 3 x 3.2 s + 1 s = " .. ci.secs)
+    assertTrue(math.abs(pi.secs - (5 + 1)) < 0.01, "peacebloom: 5 s + 1 s = " .. pi.secs)
+    -- measure 10 herb casts of 1.5 s and loot windows of 0.5 s (fresh timing store)
+    ns.Learn.Store().cast, ns.Learn.Store().loot = {}, {}
+    for i = 1, 10 do
+        M.Fire("UNIT_SPELLCAST_START", "player", "c" .. i, 2366)
+        M.now = M.now + 1.5
+        M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c" .. i, 2366)
+        M.loot = { { link = "|Hitem:2447::|h[Peacebloom]|h", qty = 1, sources = { "GameObject-0-1-0-1-1618-00A" .. i, 1 } } }
+        M.pos = { 0.1 + i * 0.03, 0.1 }
+        M.Fire("LOOT_READY")
+        M.now = M.now + 0.5
+        M.Fire("LOOT_CLOSED")
+    end
+    local sec, src = ns.Learn:CastSeconds("herb")
+    assertTrue(src == "me" and math.abs(sec - 1.5) < 0.01, "measured herb cast " .. tostring(sec))
+    local ls = ns.Learn:LootSeconds("herb")
+    assertTrue(math.abs(ns.Learn:NodeInfo(peace).secs - (1.5 + 0.5 + 1)) < 0.01, "node time uses measured cast + loot: "
+        .. ns.Learn:NodeInfo(peace).secs .. " loot " .. tostring(ls))
+    -- an interrupted cast is not measured
+    M.Fire("UNIT_SPELLCAST_START", "player", "x", 2366)
+    M.now = M.now + 4
+    M.Fire("UNIT_SPELLCAST_INTERRUPTED", "player")
+    M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "x", 2366)
+    assertTrue(math.abs(ns.Learn:CastSeconds("herb") - 1.5) < 0.01, "interrupted cast ignored")
+end)
+
+test("mining: loots on one vein are one visit; your yields replace Classic from n visits", function()
+    local before = ns.Learn.Store().nodes[34]
+    local v0, n0 = before and before.v or 0, before and before.n or 0
+    M.pos = { 0.33, 0.77 }
+    for tap = 1, 3 do
+        M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "m" .. tap, 2575)
+        M.loot = { { link = "|Hitem:2770::|h[Copper Ore]|h", qty = 2, sources = { "GameObject-0-1-0-1-1731-00B1", 2 } } }
+        if tap == 3 then M.loot[2] = { link = "|Hitem:249391::|h[Pyrite]|h", qty = 1, sources = { "GameObject-0-1-0-1-1731-00B1", 1 } } end
+        M.Fire("LOOT_READY") M.Fire("LOOT_CLOSED")
+    end
+    local r = ns.Learn.Store().nodes[34]
+    assertTrue(r.v == v0 + 1 and r.n == n0 + 3, "one visit, three loots")
+    -- Classic estimate until minSamples visits, with the Scarce item pending
+    local copper = ns.NodeTypes[34]
+    local info = ns.Learn:NodeInfo(copper)
+    assertTrue(not info.learned and info.scarce == 249391 and not info.scarceRate, "classic + scarce pending")
+    -- enough visits: 2 loots of 2 ore each per vein, Pyrite on 1 in 10 loots
+    ns.Learn.Store().nodes[34] = { v = 40, n = 80, y = { [2770] = 160, [249391] = 8 } }
+    ns.Learn:Changed()
+    info = ns.Learn:NodeInfo(copper)
+    assertTrue(info.learned and math.abs(info.taps - 2) < 0.001, "learned taps")
+    assertTrue(math.abs(ns.Learn:NodeQty(copper, 2770) - 4) < 0.001 and math.abs(ns.Learn:NodeQty(copper, 249391) - 0.2) < 0.001, "learned per node")
+    assertTrue(math.abs(info.scarceRate - 0.1) < 0.001, "scarce rate per gather")
+    assertTrue(ns.Finder:NodeValue(copper) > 0, "value from learned yields")
+    -- pooled Scarce rate feeds other Pyrite nodes still on Classic yields once 100 gathers are logged
+    ns.Learn.Store().nodes[34] = { v = 60, n = 120, y = { [2770] = 240, [249391] = 12 } }
+    ns.Learn.Store().nodes[35] = nil
+    ns.Learn:Changed()
+    local rate, n = ns.Learn:ScarceNodeRate(249391)
+    assertTrue(n == 120 and math.abs(rate - 0.1) < 0.001, "pooled")
+    local tin = ns.Learn:NodeInfo(ns.NodeTypes[35])
+    assertTrue(tin.scarceRate and ns.Learn:NodeQty(ns.NodeTypes[35], 249391) > 0, "tin gets the pooled Pyrite rate")
+    assertTrue(ns.DS:ItemName(249391) == "Pyrite" and ns.DS:ItemVendor(249391) == 100 and ns.DS:ItemQuality(249391) == 2, "scarce item data")
+    ns.Learn.Store().nodes[34], ns.Learn.Store().nodes[35] = nil, nil
+    ns.Learn:Changed()
+end)
+
+test("skinning: Pristine Leather for beasts 10-26, own skins with quantities replace estimates", function()
+    local list = ns.DS:GetMob(3245).skin -- Ornery Plainstrider, beast
+    local m = ns.DS:GetMob(3245)
+    local hasPL = false
+    for _, e in ipairs(list) do if e[1] == 249427 then hasPL = math.abs(e[2] - 0.029) < 1e-6 end end
+    assertTrue(m.ctype == 1 and (m.minLevel <= 26 and m.maxLevel >= 10) == hasPL, "Pristine Leather seed matches level band")
+    -- your own skins (with quantities) take over from minSamples
+    local own = ns.db.mobs[3245]
+    own.s, own.ss = 40, 40
+    own.si = { [2318] = 40 }
+    own.sq = { [2318] = 60, [249427] = 2 }
+    ns.DS:InvalidateMobs()
+    local mine = ns.DS:GetMob(3245)
+    local leather, pl
+    for _, e in ipairs(mine.skin) do if e[1] == 2318 then leather = e[2] elseif e[1] == 249427 then pl = e[2] end end
+    assertTrue(math.abs(leather - 1.5) < 1e-6 and math.abs(pl - 0.05) < 1e-6 and mine.skinSrc:find("my data"), "own skins")
+    own.s, own.ss, own.si, own.sq = 1, nil, { [2318] = 1 }, nil
+    ns.DS:InvalidateMobs()
+end)
+
+test("TradeSkillMaster price source (TSM_API.GetCustomPriceValue)", function()
+    local asked
+    _G.TSM_API = { GetCustomPriceValue = function(str, item) asked = str .. "|" .. item if item == "i:2770" then return 777 end end }
+    ns.Prices:Flush()
+    local saved = ns.settings.priceSources
+    ns.settings.priceSources = { "TSM", "Vendor" }
+    local v, src = ns.Prices:Get(2770)
+    assertTrue(v == 777 and src == "TSM" and asked == "dbmarket|i:2770", "TSM price " .. tostring(asked))
+    local v2, src2 = ns.Prices:Get(2589)
+    assertTrue(src2 == "Vendor" or src2 == "none", "falls through when TSM has no price")
+    local avail = table.concat(ns.Prices:Available(), ",")
+    assertTrue(avail:find("TSM"), "listed as available")
+    _G.TSM_API = nil
+    ns.settings.priceSources = saved
+    ns.Prices:Flush()
 end)
 
 test("secret loot values are ignored without errors", function()
@@ -514,21 +628,26 @@ test("risk: gank by ruleset/zone/settlements, death, hyperspawn, deaths learned,
         stvCamp.label, stvCamp.score, stvCamp.gank, stvCamp.death, stvCamp.hyper))
 end)
 
-test("settings migration to v4 (route only)", function()
+test("settings migration to v5 (route only, measured times, TSM, seeded yields)", function()
     local savedDB, savedBackup = ForagerDB, ForagerBackupDB
     ForagerBackupDB = nil
     ForagerDB = { version = 2, settings = { worldNodes = "goal", minimapNodes = "goal", areaAlpha = 0.25, routeAlpha = 0.9, pinScale = 1.3,
-        showArea = true, gamePin = true, tomtom = true, hiddenTypes = { ["1"] = true } },
-        nodes = { [1429] = { a = { t = 1, x = 0.5, y = 0.5 } } } }
+        showArea = true, gamePin = true, tomtom = true, hiddenTypes = { ["1"] = true }, gatherSeconds = 3,
+        priceSources = { "Auctionator", "AuctionTrends", "Vendor" } },
+        nodes = { [1429] = { a = { t = 1, x = 0.5, y = 0.5 }, b = { t = 34, c = 6, y = { [2770] = 9, [249391] = 1 } } } } }
     ns:InitDB()
     local st = ns.settings
-    assertTrue(ns.db.version == 4 and not ns.safeMode, "migrated")
+    assertTrue(ns.db.version == 5 and not ns.safeMode, "migrated")
+    assertTrue(st.gatherSeconds == 1, "flat gather seconds become extra seconds per node")
+    assertTrue(table.concat(st.priceSources, ",") == "Auctionator,AuctionTrends,TSM,Vendor", "TSM before vendor")
+    local seeded = ns.db.learn.nodes[34]
+    assertTrue(seeded and seeded.n == 6 and seeded.v == 2 and seeded.y[249391] == 1, "old yields seed learning (6 loots / 3 taps)")
     assertTrue(st.worldNodes == nil and st.minimapNodes == nil and st.farmMinimap == nil and st.pinScale == nil and st.hiddenTypes == nil, "pin settings removed")
     assertTrue(st.showRoute and st.routeMinimap == "next" and not st.showArea and not st.gamePin and not st.tomtom, "route only")
     assertTrue(st.areaAlpha == 0.12 and st.routeAlpha == 0.8, "styles")
     ForagerDB, ForagerBackupDB = savedDB, savedBackup
     ns:InitDB()
-    assertTrue(ns.db.version == 4, "restored")
+    assertTrue(ns.db.version == 5, "restored")
 end)
 
 test("caves: names, learning, overlay areas and finder filter", function()

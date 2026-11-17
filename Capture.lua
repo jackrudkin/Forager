@@ -11,6 +11,9 @@ local nameKind = {}      -- [localized spell name] = kind
 local pending            -- { kind, time, target }
 local lootDone           -- guard: one record per loot window
 local seenCorpse = {}    -- [guid] = true (this session) so a corpse counts once
+local castStart          -- { kind, time } of the gather cast in progress (for measured cast times)
+local lootTimer          -- { kind, time } of the open gather loot window
+local TIMED = { herb = true, ore = true, skin = true }
 local session = { start = nil, value = 0, items = {}, gathers = 0, kills = 0, money = 0 }
 Capture.session = session
 
@@ -41,11 +44,20 @@ Capture.KindForSpell = kindForSpell
 
 function Capture:Init()
     buildSpellTables()
+    ns:On("UNIT_SPELLCAST_START", function(_, unit, _, spellID)
+        if unit ~= "player" then return end
+        local kind = kindForSpell(spellID)
+        castStart = kind and TIMED[kind] and { kind = kind, time = GetTime() } or nil
+    end)
     ns:On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
         if unit ~= "player" then return end
         local kind = kindForSpell(spellID)
         if kind then pending = { kind = kind, time = GetTime() } end
+        if kind and castStart and castStart.kind == kind then ns.Learn:AddCast(kind, GetTime() - castStart.time) end
+        castStart = nil
     end)
+    ns:On("UNIT_SPELLCAST_INTERRUPTED", function(_, unit) if unit == "player" then castStart = nil end end)
+    ns:On("UNIT_SPELLCAST_FAILED", function(_, unit) if unit == "player" then castStart = nil end end)
     ns:On("UNIT_SPELLCAST_CHANNEL_START", function(_, unit, _, spellID)
         if unit ~= "player" then return end
         local kind = kindForSpell(spellID)
@@ -53,7 +65,10 @@ function Capture:Init()
     end)
     ns:On("LOOT_READY", function() Capture:OnLoot() end)
     ns:On("LOOT_OPENED", function() Capture:OnLoot() end)
-    ns:On("LOOT_CLOSED", function() lootDone = nil end)
+    ns:On("LOOT_CLOSED", function()
+        lootDone = nil
+        if lootTimer then ns.Learn:AddLootTime(lootTimer.kind, GetTime() - lootTimer.time) lootTimer = nil end
+    end)
     ns:On("PLAYER_MONEY", function()
         local m = GetMoney()
         if Capture.lastMoney and m > Capture.lastMoney and Capture.lootOpenAt and GetTime() - Capture.lootOpenAt < 5 then
@@ -120,6 +135,7 @@ end
 -- node recording
 -------------------------------------------------------------------------------
 --- Record a gathered node at x,y (0-1) on uiMap. Merges with a learned node of the same type within 15 yd.
+--- Returns key, record and whether this loot starts a new visit (veins can be looted several times).
 function Capture:RecordNode(uiMap, x, y, typeKey, items, source)
     local zone = ns.db.nodes[uiMap]
     if not zone then zone = {} ns.db.nodes[uiMap] = zone end
@@ -132,13 +148,16 @@ function Capture:RecordNode(uiMap, x, y, typeKey, items, source)
         end
     end
     local rec
+    local newVisit = true
     if best then
         rec = zone[best]
+        newVisit = not rec.l or (time() - rec.l) > ns.Learn.VISIT_GAP
     else
         rec = { t = typeKey, c = 0, y = {}, s = source or "me" }
         zone[ns.EncodeXY(x, y)] = rec
     end
     rec.c = (rec.c or 0) + 1
+    if newVisit then rec.v = (rec.v or 0) + 1 end
     rec.l = time()
     if items then
         rec.y = rec.y or {}
@@ -146,7 +165,7 @@ function Capture:RecordNode(uiMap, x, y, typeKey, items, source)
     end
     DS:Invalidate(uiMap)
     ns:Fire("FORAGER_NODES_CHANGED", uiMap)
-    return best or ns.EncodeXY(x, y), rec
+    return best or ns.EncodeXY(x, y), rec, newVisit
 end
 
 local function resolveNodeType(kind, sources, items, firstItem)
@@ -189,6 +208,8 @@ function Capture:OnLoot()
     local uiMap = ns.Player:MapID()
     local x, y = ns.Player:Position(uiMap)
 
+    if kind and TIMED[kind] then lootTimer = { kind = kind, time = now } end
+
     -- gather: herb / ore / fish
     if kind == "herb" or kind == "ore" or kind == "fish" then
         local items, first, sources = {}, nil, {}
@@ -218,7 +239,8 @@ function Capture:OnLoot()
             return
         end
         if uiMap and x and typeKey then
-            local key = Capture:RecordNode(uiMap, x, y, typeKey, items, "me")
+            local key, _, newVisit = Capture:RecordNode(uiMap, x, y, typeKey, items, "me")
+            ns.Learn:AddNode(typeKey, items, newVisit)
             if ns.Comms then ns.Comms:Share(typeKey, uiMap, key) end
             ns:CountGatherForReminder()
         end
@@ -246,8 +268,14 @@ function Capture:OnLoot()
             if kind == "skin" then
                 m.s = (m.s or 0) + 1
                 m.si = m.si or {}
-                for id, q in pairs(items) do m.si[id] = (m.si[id] or 0) + 1 end
+                m.sq = m.sq or {}
+                m.ss = (m.ss or 0) + 1 -- skins counted with quantities (1.7+)
+                for id, q in pairs(items) do
+                    m.si[id] = (m.si[id] or 0) + 1
+                    m.sq[id] = (m.sq[id] or 0) + q
+                end
                 ns.db.stats.skins = (ns.db.stats.skins or 0) + 1
+                ns.Learn:AddSkin(DS:GetMob(npcID), items)
             else
                 m.p = (m.p or 0) + 1
                 m.pi = m.pi or {}

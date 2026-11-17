@@ -352,7 +352,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
                 if i > 5 then break end
                 local t = DS:GetType(m.t)
                 if t then
-                    local col = ns.ColorHex[ns.SkillColor(t.skill or 0, ns.Player:Skill(t.kind))] or "ffffff"
+                    local col = ns.ColorHex[ns.NodeSkillColor(t, ns.Player:Skill(t.kind))] or "ffffff"
                     lines[#lines + 1] = string.format("|T%s:14|t %s  x%d  |cff%s(skill %d)|r", DS:TypeIcon(t), t.name, m.n, col, t.skill or 0)
                 end
             end
@@ -394,7 +394,15 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         elseif ns.Quests:IsActive() then
             lines[#lines + 1] = "Set Search in to Everywhere to look outside your questing zone."
         elseif goal.kind == "item" then
-            lines[#lines + 1] = "Nothing in the database drops or yields this item in zones for your level."
+            local sc = goal.item and ns.Scarce[goal.item]
+            if sc then
+                local n = 0
+                if sc.kind ~= "skin" then n = select(2, ns.Learn:ScarceNodeRate(goal.item)) end
+                lines[#lines + 1] = string.format("%s is a Scarce find. No source publishes its drop rate, so Forager learns it from your %s (%d of %d so far).",
+                    sc.name, sc.kind == "skin" and "skins" or "gathers", n, ns.Learn.SCARCE_MIN)
+            else
+                lines[#lines + 1] = "Nothing in the database drops or yields this item in zones for your level."
+            end
         end
         return table.concat(lines, "\n")
     end

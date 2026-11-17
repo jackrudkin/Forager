@@ -39,23 +39,16 @@ function Finder:ItemGoal(itemID) return "item:" .. itemID end
 -------------------------------------------------------------------------------
 local function price(id) return (ns.Prices:Get(id)) end
 
---- Value (copper) of one node of a type (all gathers on it).
+--- Value (copper) of one node of a type (all gathers on it). Uses your own yields from
+--- minSamples visits (Scarce finds included), else Classic yields (+ learned Scarce rate).
 function Finder:NodeValue(t)
     local v = 0
-    if t.yields and #t.yields > 0 then
-        for _, y in ipairs(t.yields) do v = v + price(y[1]) * y[2] end
-    elseif t.item and t.item > 0 then
-        v = price(t.item) * 1.5
-    end
-    return v * (t.taps or 1)
+    for _, y in ipairs(ns.Learn:NodeInfo(t).perNode) do v = v + price(y[1]) * y[2] end
+    return v
 end
 
 --- Expected count of an item per node of a type.
-local function nodeItemQty(t, itemID)
-    for _, y in ipairs(t.yields or {}) do if y[1] == itemID then return y[2] * (t.taps or 1) end end
-    if t.item == itemID then return 1.5 * (t.taps or 1) end
-    return 0
-end
+local function nodeItemQty(t, itemID) return ns.Learn:NodeQty(t, itemID) end
 
 local CAT_FOR_GOAL = { cloth = "cloth", meat = "meat", elemental = "elemental", lockbox = "lockbox" }
 
@@ -299,6 +292,19 @@ local function zoneCandidates(opts)
 end
 Finder.ZoneCandidates = zoneCandidates
 
+--- "Classic spawns · your yields" style label for a node mix { [typeKey] = count }.
+function Finder.YieldSource(byType)
+    local mine, total = 0, 0
+    for tk, c in pairs(byType) do
+        total = total + c
+        local t = DS:GetType(tk)
+        if t and ns.Learn:NodeInfo(t).learned then mine = mine + c end
+    end
+    if total > 0 and mine == total then return "Classic spawns · your yields" end
+    if mine > 0 then return string.format("Classic spawns · your yields for %d%%", math.floor(mine / total * 100 + 0.5)) end
+    return "Classic spawns + yields"
+end
+
 local function evalNodes(uiMap, goal, opts, out)
     local s = ns.settings
     local itemID = goal.item
@@ -313,12 +319,12 @@ local function evalNodes(uiMap, goal, opts, out)
             if itemID then
                 local q = nodeItemQty(t, itemID)
                 if q > 0 then
-                    local col = ns.SkillColor(t.skill or 0, opts.skills[t.kind] or 300)
+                    local col = ns.NodeSkillColor(t, opts.skills[t.kind] or 300)
                     if col ~= "red" then w = q * math.max(1, price(itemID)) end
                 end
             elseif t.kind == kind then
-                local col = ns.SkillColor(t.skill or 0, have or 300)
-                if opts.mode == "skill" then w = ns.SkillUpChance[col] or 0
+                local col = ns.NodeSkillColor(t, have or 300)
+                if opts.mode == "skill" then w = (ns.SkillUpChance[col] or 0) * ns.Learn:NodeInfo(t).taps
                 elseif col ~= "red" then w = Finder:NodeValue(t) end
             end
         end
@@ -351,7 +357,10 @@ local function evalNodes(uiMap, goal, opts, out)
         local n = #pts
         local route = ns.Route:Build(uiMap, pts, 40)
         local active = n * s.activeFraction
-        local loopSec = route.length / P:Speed() + active * s.gatherSeconds
+        -- time at nodes: casts x gathers per node (+ loot, + extra) per type, measured once you have data
+        local gatherSec = 0
+        for tk, c in pairs(byType) do gatherSec = gatherSec + c * s.activeFraction * ns.Learn:NodeInfo(DS:GetType(tk)).secs end
+        local loopSec = route.length / P:Speed() + gatherSec
         local loopsPerHour = 3600 / math.max(60, loopSec)
         local nodesPerHour = active * loopsPerHour
         -- item breakdown
@@ -360,11 +369,11 @@ local function evalNodes(uiMap, goal, opts, out)
             mix[#mix + 1] = { t = tk, n = c }
             local t = DS:GetType(tk)
             local share = nodesPerHour * c / n
-            for _, y in ipairs(t.yields or {}) do
+            for _, y in ipairs(ns.Learn:NodeInfo(t).perNode) do
                 if not itemID or y[1] == itemID then
                     local e = items[y[1]] or { id = y[1], perHour = 0, value = 0 }
                     items[y[1]] = e
-                    local q = share * y[2] * (t.taps or 1)
+                    local q = share * y[2]
                     e.perHour = e.perHour + q
                     e.value = e.value + q * price(y[1])
                 end
@@ -385,7 +394,7 @@ local function evalNodes(uiMap, goal, opts, out)
             itemUnits = itemID and (items[itemID] and items[itemID].perHour or 0) or nil,
             why = string.format("%d spawn points, ~%.0f live per loop, loop %s", n, active,
                 SecondsToTime and SecondsToTime(loopSec) or (math.floor(loopSec) .. "s")),
-            confidence = "Classic spawns",
+            confidence = Finder.YieldSource(byType),
         }
     end
 end
@@ -661,6 +670,7 @@ function Finder:Suggest(text, max)
     for _, t in pairs(ns.NodeTypes) do
         for _, y in ipairs(t.yields) do addItem(y[1], DS:ItemName(y[1])) end
     end
+    for id, sc in pairs(ns.Scarce) do addItem(id, sc.name) end
     if ForagerData and ForagerData.items then
         for id, it in pairs(ForagerData.items) do addItem(id, it[1]) end
     end

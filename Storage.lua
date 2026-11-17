@@ -2,7 +2,7 @@
 -- auto-restore, versioned migrations and safe mode. Same approach as AuctionTrends.
 local _, ns = ...
 
-ns.DB_VERSION = 4
+ns.DB_VERSION = 5
 
 local DEFAULT_SETTINGS = {
     -- layers
@@ -31,12 +31,14 @@ local DEFAULT_SETTINGS = {
     activeFraction = 0.30,       -- share of spawn points with a live node at any moment
     killsPerHour = 45,
     castsPerHour = 220,
-    gatherSeconds = 3,
+    gatherSeconds = 1,           -- extra seconds per node (dismount, walk in); casts and loot are measured
+
     speed = "auto",              -- auto | run | mount60 | mount100
     showDangerous = false,
     minSamples = 30,             -- own data replaces Classic estimates from this sample size
     -- prices
-    priceSources = { "AuctionTrends", "Auctionator", "Vendor" },
+    priceSources = { "AuctionTrends", "Auctionator", "TSM", "Vendor" },
+    tsmPrice = "dbmarket",       -- TradeSkillMaster price string when TSM is a source
     -- tooltip
     tooltip = true, tooltipGear = true, tooltipFarm = true, tooltipSkin = true, tooltipPickpocket = true,
     -- sharing
@@ -60,6 +62,7 @@ local function defaults()
         deaths = {},     -- [uiMap][cellKey] = count (2% cells) your deaths, for the risk estimate
         names = {},      -- learned node type names for unknown types: ["i<itemID>"] = name
         stats = { items = {}, gathers = {}, kills = 0, skins = 0, zones = {}, gold = 0 },
+        learn = { nodes = {}, cast = {}, loot = {}, scarceSkin = {} }, -- your own yields, times, Scarce rates
         sessions = {},   -- recent sessions summary
         chars = {},      -- [char-realm] = { questZone, questZone2, goal }
         imported = {},
@@ -115,6 +118,24 @@ local migrations = {
         st.gamePin = false
         st.tomtom = false
         db.version = 4
+    end,
+    [4] = function(db)
+        -- 1.7.0: cast times are Forever/Classic spell data or measured, so the old flat
+        -- "seconds per gather" becomes extra seconds per node; TSM joins the price sources;
+        -- node yields you recorded before 1.7 seed the learned yields.
+        local st = db.settings or {}
+        db.settings = st
+        if st.gatherSeconds == nil or st.gatherSeconds == 3 then st.gatherSeconds = 1 end
+        if type(st.priceSources) == "table" then
+            local has, vendorAt = false, nil
+            for i, v in ipairs(st.priceSources) do
+                if v == "TSM" then has = true end
+                if v == "Vendor" then vendorAt = i end
+            end
+            if not has and vendorAt and #st.priceSources > 1 then table.insert(st.priceSources, vendorAt, "TSM") end
+        end
+        ns.Learn:SeedFromNodes(db)
+        db.version = 5
     end,
 }
 

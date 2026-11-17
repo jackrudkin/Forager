@@ -19,9 +19,18 @@ ns.SkillLines = { herb = 182, ore = 186, skin = 393, fish = 356, cook = 185 }
 ns.Junkboxes = { [16882] = 1, [16883] = 70, [16884] = 175, [16885] = 250 }
 
 -- Skill colour offsets above the required (orange) skill: yellow, green, grey.
--- Herbalism/Mining node thresholds follow Classic (Forever wiki lists the same numbers for ore).
+-- Mining and Skinning: same as Classic (warcraft.wiki.gg Forever mining/skinning techniques).
+-- Herbalism: Forever moved the yellow -> green step 15 points later, so herbs stay yellow up to
+-- required + 65 (warcraft.wiki.gg "Forever herbalism techniques" herb table, e.g. Peacebloom 1/25/65/100).
 ns.SkillOffsets = { 25, 50, 100 }
+ns.SkillOffsetsByKind = { herb = { 25, 65, 100 }, ore = { 25, 50, 100 }, skin = { 25, 50, 100 } }
+-- Nodes whose wiki thresholds don't follow the offsets: { yellow, green, grey } as absolute skill.
+ns.SkillThresholds = { ["Dreamfoil"] = { 290, 340, 370 } }
 ns.SkillUpChance = { orange = 1.0, yellow = 0.75, green = 0.25, grey = 0 }
+
+-- Gather cast times in seconds (Classic spell data, classicdb.ch: Herb Gathering 5 s, Mining 3.2 s).
+-- Forager measures your own casts and uses those once it has 10 of a kind.
+ns.CastSeconds = { herb = 5.0, ore = 3.2 }
 
 --- Skinning skill needed for a mob of the given level (Forever wiki formula).
 function ns.SkinSkillForLevel(level)
@@ -32,15 +41,65 @@ function ns.SkinSkillForLevel(level)
 end
 
 --- "orange"/"yellow"/"green"/"grey"/"red" for a skill requirement vs player skill.
-function ns.SkillColor(required, have)
+--- kind (herb/ore/skin) picks the Forever offsets; abs = { yellow, green, grey } overrides them.
+function ns.SkillColor(required, have, kind, abs)
     if not have then return "red" end
     if have < required then return "red" end
-    local o = ns.SkillOffsets
-    if have < required + o[1] then return "orange" end
-    if have < required + o[2] then return "yellow" end
-    if have < required + o[3] then return "green" end
+    local y, g, gr
+    if abs then
+        y, g, gr = abs[1], abs[2], abs[3]
+    else
+        local o = (kind and ns.SkillOffsetsByKind[kind]) or ns.SkillOffsets
+        local base = required <= 1 and 0 or required -- skill-1 nodes: 1/25/50/100 on the wiki
+        y, g, gr = base + o[1], base + o[2], base + o[3]
+    end
+    if have < y then return "orange" end
+    if have < g then return "yellow" end
+    if have < gr then return "green" end
     return "grey"
 end
+
+--- Skill colour of a node type for a skill value.
+function ns.NodeSkillColor(t, have)
+    return ns.SkillColor(t.skill or 0, have, t.kind, ns.SkillThresholds[t.name])
+end
+
+-- Scarce materials (new in Forever): bonus finds while gathering, three tiers per profession.
+-- Item IDs and vendor prices: wowgoldfarms.com Forever scarce materials table (TheWoWDB links).
+-- No source publishes drop rates for herbs or ore, so Forager learns them from your own gathers.
+ns.Scarce = {
+    [249399] = { name = "Frilled Lichen", kind = "herb", tier = 1, vendor = 30 },
+    [249424] = { name = "Rosecap", kind = "herb", tier = 2, vendor = 95 },
+    [249274] = { name = "Stranglevine", kind = "herb", tier = 3, vendor = 250 },
+    [249391] = { name = "Pyrite", kind = "ore", tier = 1, vendor = 100 },
+    [249425] = { name = "Bauxite", kind = "ore", tier = 2, vendor = 250 },
+    [249426] = { name = "Pitchblende", kind = "ore", tier = 3, vendor = 375 },
+    [249427] = { name = "Pristine Leather", kind = "skin", tier = 1, vendor = 125 },
+    [249428] = { name = "Pristine Hide", kind = "skin", tier = 2, vendor = 250 },
+    [249429] = { name = "Pristine Scale", kind = "skin", tier = 3, vendor = 375 },
+}
+-- Which node gives which Scarce item: herbs from the warcraft.wiki.gg herb table; ore from the
+-- warcraft.wiki.gg ore table (Copper/Tin/Silver: Pyrite, Iron/Mithril: Bauxite) plus Thorium:
+-- Pitchblende (wow-professions.com; the wiki lists Thorium as unknown).
+ns.ScarceForNode = {}
+do
+    local byItem = {
+        [249399] = { "Earthroot", "Mageroyal", "Briarthorn", "Stranglekelp", "Bruiseweed", "Wild Steelbloom", "Kingsblood" },
+        [249424] = { "Liferoot", "Fadeleaf", "Goldthorn", "Khadgar's Whisker", "Wintersbite", "Firebloom", "Purple Lotus" },
+        [249274] = { "Sungrass", "Blindweed", "Ghost Mushroom", "Gromsblood", "Golden Sansam", "Dreamfoil",
+            "Mountain Silversage", "Plaguebloom", "Icecap" },
+        [249391] = { "Copper Vein", "Tin Vein", "Silver Vein", "Ooze Covered Silver Vein" },
+        [249425] = { "Iron Deposit", "Ooze Covered Iron Deposit", "Mithril Deposit", "Ooze Covered Mithril Deposit" },
+        [249426] = { "Small Thorium Vein", "Ooze Covered Thorium Vein", "Rich Thorium Vein", "Ooze Covered Rich Thorium Vein" },
+    }
+    for id, names in pairs(byItem) do for _, n in ipairs(names) do ns.ScarceForNode[n] = id end end
+end
+-- Skinning Scarce with a published source: Pristine Leather from beasts level 10-26
+-- (classicwowforever.com). Starting rate: one community log, 29 from 1,000 Barrens beasts at
+-- level 22-26 (nerdflakes.com). Your own skins replace it from 100 skins in that band.
+ns.ScarceSkin = {
+    { id = 249427, ctype = 1, minLevel = 10, maxLevel = 26, rate = 0.029, n = 1000 },
+}
 
 ns.ColorHex = {
     red = "ff2020", orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080",

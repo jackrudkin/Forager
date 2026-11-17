@@ -147,8 +147,13 @@ function DS:IsFriendly(m)
     return m and m.friendly ~= nil and m.friendly == ns.Player:Faction()
 end
 
+--- Drop decoded mobs (own skin data or Scarce rates changed).
+function DS:InvalidateMobs() wipe(mobCache) end
+
 function DS:GetMob(npcID)
     if not npcID then return nil end
+    local mn = ns.settings and ns.settings.minSamples
+    if mn ~= DS.mobCacheMin then wipe(mobCache) DS.mobCacheMin = mn end
     local m = mobCache[npcID]
     if m ~= nil then return m or nil end
     local s = ForagerData and ForagerData.mobs and ForagerData.mobs[npcID]
@@ -166,6 +171,9 @@ function DS:GetMob(npcID)
         m.green, m.blue, m.epic = (tonumber(g) or 0) / 100, (tonumber(b) or 0) / 100, (tonumber(e) or 0) / 100
         m.greenIlvl = tonumber(il) or m.maxLevel
     end
+    -- skin = what the finders use: your own skins from minSamples, else Classic + Forever Scarce
+    m.skinBase = m.skin
+    if ns.Learn and ns.db then m.skin, m.skinSrc = ns.Learn:SkinList(m) end
     mobCache[npcID] = m
     return m
 end
@@ -213,6 +221,7 @@ function DS:ItemName(itemID)
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
     if b then return b[1] end
     if ns.EnchantNames[itemID] then return ns.EnchantNames[itemID] end
+    if ns.Scarce[itemID] then return ns.Scarce[itemID].name end
     if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemID) end
     return "item:" .. itemID
 end
@@ -221,11 +230,13 @@ function DS:ItemQuality(itemID)
     local q = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(itemID)
     if q then return q end
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
+    if not b and ns.Scarce[itemID] then return 2 end -- Scarce materials are Uncommon
     return b and b[2] or 1
 end
 
 function DS:ItemCategory(itemID)
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
+    if not b and ns.Scarce[itemID] then return "trade" end
     return b and b[4] or "other"
 end
 
@@ -235,6 +246,7 @@ function DS:ItemVendor(itemID)
         if sell and sell > 0 then return sell end
     end
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
+    if not b and ns.Scarce[itemID] then return ns.Scarce[itemID].vendor end
     return b and b[3] or 0
 end
 
