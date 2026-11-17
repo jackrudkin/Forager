@@ -1,17 +1,20 @@
--- Combo: gather + kill. Ranks areas where you mine and/or pick herbs AND kill the mobs along the way,
--- with time as the shared budget, so the two incomes are not simply added up.
+-- Combo: gather + kill (+ skin). Ranks areas where you mine and/or pick herbs AND kill (and skin) the
+-- mobs along the way, with time as the shared budget, so the incomes are not simply added up.
 --
 -- Model, per loop of the route:
 --   walk   = route length / speed
 --   gather = live nodes near the route x seconds per gather
---   fight  = mobs killed x seconds per kill (scaled by how much lower level they are)
---   gold/h = (node value + mob value) x 3600 / (walk + gather + fight)
--- Which mobs to kill: a mob type is worth it only when its gold per second of fighting beats the
--- loop's current gold per second. Taking types in order of gold per fighting second while that holds
+--   fight  = mobs killed x (seconds per kill + seconds per skin if you skin it), faster for lower levels
+--   rate   = (node value + mob value) x 3600 / (walk + gather + fight)
+-- "Value" is gold (Gold / hour) or skill-up chance (Skill-ups / hour: gathering + skinning together).
+-- Skinning: a mob's skins count only if your Skinning is high enough for it (Forever formula), cost
+-- extra seconds, and are reported separately from the rest of its loot.
+-- Which mobs to kill: a mob type is worth it only when its value per second of fighting beats the
+-- loop's current value per second. Taking types in order of value per fighting second while that holds
 -- gives the best possible total (the classic best-ratio rule). Mobs you killed are only back after
 -- their respawn time, so a short loop finds fewer of them; this is solved by iterating.
 -- Two routes are tried per area: through the nodes only, and through the nodes plus the best camps
--- of worthwhile mobs that the node route misses. The faster one wins.
+-- of worthwhile mobs that the node route misses. The better one wins.
 local _, ns = ...
 local Combo = {}
 ns.Combo = Combo
@@ -27,6 +30,9 @@ function Combo:DefaultGather()
     if P.skills.herb then return "herb" end
     return "ore"
 end
+
+function Combo:Mode() return ns.settings.comboMode == "skill" and "skill" or "gold" end
+function Combo:KillFor() return ns.settings.comboKill == "skin" and "skin" or "all" end
 
 -------------------------------------------------------------------------------
 -- geometry (yards)
@@ -62,7 +68,8 @@ end
 -------------------------------------------------------------------------------
 -- one loop: who to kill, time and income
 -------------------------------------------------------------------------------
---- route: built route; nodes/mobs: points in the area; info: per-npc { m, v, lf }; ctx: settings.
+--- route: built route; nodes/mobs: points in the area; info: per-npc values; ctx: settings.
+--- Nodes carry v (ranked value), g (gold), su (skill-ups); mob types carry v, loot, skinG, su, killT.
 local function simulate(uiMap, route, nodes, mobs, info, ctx)
     local w, h = P:ZoneSize(uiMap)
     local R = ctx.pull
@@ -76,12 +83,14 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
         end
         return inCorridor(segs, p.x * w, p.y * h, R2)
     end
-    -- nodes you pass (they're on the route or within pull range of it)
-    local nodeOn, nodeIncome, byType = {}, 0, {}
+    -- nodes you pass (on the route or within reach of it)
+    local nodeOn, nodeV, nodeG, nodeSU, byType = {}, 0, 0, 0, {}
     for _, p in ipairs(nodes) do
         if near(p) then
             nodeOn[#nodeOn + 1] = p
-            nodeIncome = nodeIncome + p.v * ctx.active
+            nodeV = nodeV + p.v * ctx.active
+            nodeG = nodeG + p.g * ctx.active
+            nodeSU = nodeSU + p.su * ctx.active
             byType[p.t] = (byType[p.t] or 0) + 1
         end
     end
@@ -95,8 +104,7 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
             local e = types[p.npc]
             if not e then
                 local inf = info[p.npc]
-                e = { npc = p.npc, m = inf.m, v = inf.v, c = 0, killT = (ctx.killSec + R / 2 / ctx.speed) / inf.lf }
-                e.rate = e.v / e.killT
+                e = { npc = p.npc, inf = inf, m = inf.m, v = inf.v, c = 0, killT = inf.killT, rate = inf.v / inf.killT }
                 types[p.npc] = e
             end
             e.c = e.c + 1
@@ -107,13 +115,14 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
     for _, e in pairs(types) do order[#order + 1] = e end
     table.sort(order, function(a, b) return a.rate > b.rate end)
     -- best-ratio selection with respawn feedback (a short loop meets fewer respawned mobs)
-    local T, I, chosen, avail = walk + gather, nodeIncome, {}, 1
+    local base = walk + gather
+    local T, I, chosen, avail = base, nodeV, {}, 1
     for _ = 1, 5 do
         avail = math.min(1, T / ctx.respawn)
-        local Tn, In = walk + gather, nodeIncome
+        local Tn, In = base, nodeV
         chosen = {}
         for _, e in ipairs(order) do
-            if Tn <= 0 or e.rate > In / Tn then
+            if e.rate > 0 and (Tn <= 0 or e.rate > In / Tn) then
                 local a = e.c * avail
                 Tn, In = Tn + a * e.killT, In + a * e.v
                 chosen[e.npc] = a
@@ -122,14 +131,26 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
         T, I = Tn, In
     end
     if T <= 0 then return nil end
-    local fight = math.max(0, T - walk - gather)
-    local kills = 0
-    for _, a in pairs(chosen) do kills = kills + a end
+    local kills, loot, skinG, skinSU, skins = 0, 0, 0, 0, 0
+    for _, e in ipairs(order) do
+        local a = chosen[e.npc]
+        if a then
+            kills = kills + a
+            loot = loot + a * e.inf.loot
+            skinG = skinG + a * e.inf.skinG
+            skinSU = skinSU + a * e.inf.su
+            if e.inf.skinOK then skins = skins + a end
+        end
+    end
+    local k = 3600 / T
     return {
-        route = route, perHour = I * 3600 / T, nodeRate = nodeIncome * 3600 / T, mobRate = (I - nodeIncome) * 3600 / T,
-        nodesOnlyRate = (walk + gather) > 0 and nodeIncome * 3600 / (walk + gather) or 0,
-        loopSec = T, walk = walk, gather = gather, fight = fight, avail = avail,
-        liveNodes = liveNodes, kills = kills, nodeOn = nodeOn, mobOn = mobOn, byType = byType,
+        route = route, perHour = I * k,
+        nodeRate = nodeV * k, mobRate = (I - nodeV) * k,
+        nodeGold = nodeG * k, skinGold = skinG * k, lootGold = loot * k, gold = (nodeG + skinG + loot) * k,
+        nodeSU = nodeSU * k, skinSU = skinSU * k, skillups = (nodeSU + skinSU) * k,
+        nodesOnlyRate = base > 0 and nodeV * 3600 / base or 0,
+        loopSec = T, walk = walk, gather = gather, fight = math.max(0, T - base), avail = avail,
+        liveNodes = liveNodes, kills = kills, skins = skins, nodeOn = nodeOn, mobOn = mobOn, byType = byType,
         types = order, chosen = chosen,
     }
 end
@@ -143,10 +164,8 @@ local function cell(x, y)
 end
 
 --- Top non-overlapping W x W windows of a grid: { {cx, cy, score}, ... }
-local function topWindows(grid, W, k, taken)
-    local out = {}
-    local blocked = {}
-    for _, t in ipairs(taken or {}) do blocked[#blocked + 1] = t end
+local function topWindows(grid, W, k)
+    local out, blocked = {}, {}
     for _ = 1, k do
         local best, bx, by = 0, nil, nil
         for cy = 0, GRID - W do
@@ -178,8 +197,8 @@ end
 
 local function priceOf(id) return (ns.Prices:Get(id)) end
 
---- Items per hour for a result: node yields + drops of the mobs you kill.
-local function itemsPerHour(r, sim, info, skills, level)
+--- Items per hour for a result: node yields + drops (and skins) of the mobs you kill.
+local function itemsPerHour(r, sim, info, level)
     local loops = 3600 / sim.loopSec
     local items = {}
     local function add(key, fields, qty, value)
@@ -196,10 +215,16 @@ local function itemsPerHour(r, sim, info, skills, level)
         end
     end
     for npc, a in pairs(sim.chosen) do
-        local _, parts = ns.Finder:MobValue(info[npc].m, "gold", skills, level)
+        local inf = info[npc]
+        local _, parts = ns.Finder:MobValue(inf.m, "gold", inf.lootSkills, level)
         for _, pa in ipairs(parts) do
             local key = pa.id or (pa.greens and ("greens" .. pa.greens)) or "coin"
             add(key, { id = pa.id, greens = pa.greens, coin = pa.coin }, pa.p * a * loops, pa.value * a * loops)
+        end
+        if inf.skinOK then
+            for _, e in ipairs(inf.m.skin) do
+                add(e[1], { id = e[1], skin = true }, e[2] * a * loops, e[2] * priceOf(e[1]) * a * loops)
+            end
         end
     end
     local list = {}
@@ -208,35 +233,63 @@ local function itemsPerHour(r, sim, info, skills, level)
     return list
 end
 
+--- Per-mob-type values for this character: loot (without skins), skins, skinning skill-ups, time per kill.
+local function mobInfo(m, lf, ctx, skills, lootSkills, level)
+    local loot = ns.Finder:MobValue(m, "gold", lootSkills, level)
+    local req = m.skinnable and ns.SkinSkillForLevel(m.maxLevel) or nil
+    local have = skills.skin
+    local skinOK = req ~= nil and have ~= nil and have >= req
+    local skinG, su, col = 0, 0, nil
+    if skinOK then
+        for _, e in ipairs(m.skin) do skinG = skinG + e[2] * priceOf(e[1]) end
+        col = ns.SkillColor(req, have)
+        su = ns.SkillUpChance[col] or 0
+    elseif req and have then
+        col = "red"
+    end
+    if ctx.killFor == "skin" and not skinOK then return nil end
+    local killT = (ctx.killSec + (skinOK and ctx.skinSec or 0) + ctx.pull / 2 / ctx.speed) / lf
+    local v = ctx.mode == "skill" and su or (loot + skinG)
+    if v <= 0 then return nil end
+    return { m = m, lf = lf, v = v, loot = loot, skinG = skinG, su = su, skinOK = skinOK, req = req, col = col,
+        killT = killT, lootSkills = lootSkills }
+end
+Combo.MobInfo = mobInfo
+
 local function evalZone(uiMap, gather, opts, ctx, out)
     local kinds = Combo.KINDS[gather]
     local skills, level, loc = opts.skills, opts.level, opts.location
+    local lootSkills = {}
+    for k, v in pairs(skills) do if k ~= "skin" then lootSkills[k] = v end end
     -- nodes you can gather, valued per visit
     local nodes, minSkill = {}, nil
     for _, pt in ipairs(DS:GetZoneNodes(uiMap)) do
         local t = DS:GetType(pt.t)
         if t and kinds[t.kind] and allowed(loc, uiMap, pt.x, pt.y) then
             local have = skills[t.kind]
-            if have and ns.SkillColor(t.skill or 0, have) ~= "red" then
-                local v = ns.Finder:NodeValue(t)
+            local col = have and ns.SkillColor(t.skill or 0, have)
+            if col and col ~= "red" then
+                local g = ns.Finder:NodeValue(t)
+                local su = (ns.SkillUpChance[col] or 0) * (t.taps or 1)
+                local v = ctx.mode == "skill" and su or g
                 if v > 0 then
-                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, w = v * ctx.active }
+                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, g = g, su = su, w = v * ctx.active }
                     minSkill = math.min(minSkill or 999, t.skill or 0)
                 end
             end
         end
     end
     if #nodes < 3 then return end
-    -- mobs you can kill, valued per kill (all loot, skins if you can skin)
+    -- mobs you can kill (and skin)
     local info, mobs = {}, {}
     for npc, flat in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npc)
         if m then
             local lf = ns.Finder.LevelFactor(m, level, ns.settings.showDangerous)
             if lf > 0 then
-                local v = ns.Finder:MobValue(m, "gold", skills, level)
-                if v > 0 then
-                    info[npc] = { m = m, v = v, lf = lf }
+                local inf = mobInfo(m, lf, ctx, skills, lootSkills, level)
+                if inf then
+                    info[npc] = inf
                     for i = 1, #flat, 2 do
                         if allowed(loc, uiMap, flat[i], flat[i + 1]) then
                             mobs[#mobs + 1] = { x = flat[i], y = flat[i + 1], npc = npc }
@@ -257,8 +310,8 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     for _, p in ipairs(mobs) do
         local cx, cy = cell(p.x, p.y)
         local inf = info[p.npc]
-        -- a kill costs ~killSec; weigh it like the same time spent gathering
-        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * ctx.gatherSec / (ctx.killSec / inf.lf) * ctx.active
+        -- a kill costs killT; weigh it like the same time spent gathering
+        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * ctx.gatherSec / inf.killT * ctx.active
     end
     local cands = topWindows(gNodes, W, 3)
     for _, c in ipairs(topWindows(gBoth, W, 3)) do
@@ -274,35 +327,28 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         for _, p in ipairs(nodes) do if p.x >= x1 and p.x < x2 and p.y >= y1 and p.y < y2 then an[#an + 1] = p end end
         for _, p in ipairs(mobs) do if p.x >= x1 and p.x < x2 and p.y >= y1 and p.y < y2 then am[#am + 1] = p end end
         if #an >= 3 then
-            local routeA = ns.Route:Build(uiMap, an, 40)
-            local simA = simulate(uiMap, routeA, an, am, info, ctx)
-            local best, simOnly = simA, simA
+            local simA = simulate(uiMap, ns.Route:Build(uiMap, an, 40), an, am, info, ctx)
+            local best = simA
             -- variant B: add the best camps of worthwhile mobs that the node route misses
             if simA and #am > 0 then
-                local worth = {}
-                for npc in pairs(simA.chosen) do worth[npc] = true end
-                for _, e in ipairs(simA.types) do if e.rate > simA.perHour / 3600 then worth[e.npc] = true end end
-                for npc, inf in pairs(info) do
-                    if not worth[npc] and inf.v / ((ctx.killSec + ctx.pull / 2 / ctx.speed) / inf.lf) > simA.perHour / 3600 then worth[npc] = true end
-                end
+                local bar = simA.perHour / 3600
                 local campPts = {}
                 for _, p in ipairs(am) do
-                    if worth[p.npc] then campPts[#campPts + 1] = { x = p.x, y = p.y, w = info[p.npc].v } end
+                    local inf = info[p.npc]
+                    if inf.v / inf.killT > bar then campPts[#campPts + 1] = { x = p.x, y = p.y, w = inf.v } end
                 end
                 if #campPts > 0 then
-                    local camps = ns.Route:Clusters(campPts, 6)
                     local pts = {}
                     for _, p in ipairs(an) do pts[#pts + 1] = p end
                     local added = 0
-                    for _, cp in ipairs(camps) do
+                    for _, cp in ipairs(ns.Route:Clusters(campPts, 6)) do
                         if cp.n >= 2 and added < 3 then
                             pts[#pts + 1] = { x = cp.x, y = cp.y, w = cp.w * simA.avail, n = cp.n, camp = true }
                             added = added + 1
                         end
                     end
                     if added > 0 then
-                        local routeB = ns.Route:Build(uiMap, pts, 44)
-                        local simB = simulate(uiMap, routeB, an, am, info, ctx)
+                        local simB = simulate(uiMap, ns.Route:Build(uiMap, pts, 44), an, am, info, ctx)
                         if simB and simB.perHour > best.perHour then best = simB end
                     end
                 end
@@ -310,8 +356,8 @@ local function evalZone(uiMap, gather, opts, ctx, out)
             if best then
                 best.rect = { x1, y1, x2, y2 }
                 best.cell = c
-                best.nodesOnlyRate = simOnly.nodesOnlyRate
-                best.areaNodes, best.areaMobs = an, am
+                best.nodesOnlyRate = simA.nodesOnlyRate
+                best.areaMobs = am
                 evaluated[#evaluated + 1] = best
             end
         end
@@ -329,22 +375,25 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     end
     local zone = ns.Zones[uiMap]
     for rank, sim in ipairs(kept) do
-        -- dedicated mob farming in the same area, the Finder's way, for comparison
+        -- dedicated mob farming (or skinning) in the same area, the Finder's way, for comparison
         local mobsOnly, nm = 0, 0
         for _, p in ipairs(sim.areaMobs) do
             local inf = info[p.npc]
             mobsOnly, nm = mobsOnly + inf.v * inf.lf, nm + 1
         end
         if nm > 0 then mobsOnly = mobsOnly / nm * ns.settings.killsPerHour * math.min(1, nm / 25) end
-        local mobsList, worthy, skipped, minL, maxL = {}, {}, {}, 99, 0
+        local mobsList, worthy, skipped, minL, maxL, minSkin = {}, {}, {}, 99, 0, nil
         for _, e in ipairs(sim.types) do
             local a = sim.chosen[e.npc]
-            local row = { npc = e.npc, m = e.m, n = e.c, perKill = e.v, killT = e.killT, perMin = e.rate * 60,
-                kills = a and a * 3600 / sim.loopSec or 0 }
+            local inf = e.inf
+            local row = { npc = e.npc, m = e.m, n = e.c, perKill = inf.loot + inf.skinG, loot = inf.loot, skinG = inf.skinG,
+                su = inf.su, skinOK = inf.skinOK, req = inf.req, col = inf.col, killT = e.killT,
+                perMin = e.rate * 60, kills = a and a * 3600 / sim.loopSec or 0 }
             if a then
                 worthy[#worthy + 1] = row
                 mobsList[#mobsList + 1] = row
                 minL, maxL = math.min(minL, e.m.minLevel), math.max(maxL, e.m.maxLevel)
+                if inf.skinOK then minSkin = math.min(minSkin or 999, inf.req) end
             else
                 skipped[#skipped + 1] = row
             end
@@ -352,19 +401,24 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         local pts = {}
         for _, p in ipairs(sim.nodeOn) do pts[#pts + 1] = p end
         for _, p in ipairs(sim.mobOn) do if sim.chosen[p.npc] then pts[#pts + 1] = p end end
+        local k = 3600 / sim.loopSec
         local r = {
-            uiMap = uiMap, goal = "combo:" .. gather, mode = "gold", rank = rank, source = "combo",
+            uiMap = uiMap, goal = "combo:" .. gather .. (ctx.killFor == "skin" and ":skin" or ""), mode = ctx.mode,
+            killFor = ctx.killFor, gather = gather, rank = rank, source = "combo",
             rect = sim.rect, points = pts, route = sim.route, perHour = sim.perHour,
             nodeRate = sim.nodeRate, mobRate = sim.mobRate, nodesOnlyRate = sim.nodesOnlyRate, mobsOnlyRate = mobsOnly,
+            nodeGold = sim.nodeGold, skinGold = sim.skinGold, lootGold = sim.lootGold, gold = sim.gold,
+            nodeSU = sim.nodeSU, skinSU = sim.skinSU, skillups = sim.skillups,
             loopSec = sim.loopSec, walkSec = sim.walk, gatherSec = sim.gather, fightSec = sim.fight,
-            nodesPerHour = sim.liveNodes * 3600 / sim.loopSec, killsPerHour = sim.kills * 3600 / sim.loopSec,
-            unitsPerHour = sim.kills * 3600 / sim.loopSec, unitLabel = "kills/h",
-            mobs = mobsList, worthy = worthy, skipped = skipped, minSkill = minSkill,
+            nodesPerHour = sim.liveNodes * k, killsPerHour = sim.kills * k, skinsPerHour = sim.skins * k,
+            unitsPerHour = sim.kills * k, unitLabel = "kills/h",
+            mobs = mobsList, worthy = worthy, skipped = skipped, minSkill = minSkill, minSkin = minSkin,
             minLevel = maxL > 0 and minL or nil, maxLevel = maxL > 0 and maxL or nil, active = ctx.active,
             zoneName = zone.name, zoneMin = zone.min, zoneMax = zone.max, confidence = "Classic estimate",
+            assumedSkin = ctx.assumedSkin,
         }
-        r.items = itemsPerHour(r, sim, info, skills, level)
-        r.why = string.format("%d nodes and %d mobs near the route; mobs killed only when they pay more per second than gathering",
+        r.items = itemsPerHour(r, sim, info, level)
+        r.why = string.format("%d nodes and %d mobs near the route; a mob is killed only when it pays more per second than gathering",
             #sim.nodeOn, #sim.mobOn)
         r.risk, r.riskLevel = ns.Finder.RiskFor(zone, opts.faction)
         ns.Finder.NameArea(r)
@@ -375,7 +429,8 @@ end
 -------------------------------------------------------------------------------
 -- public
 -------------------------------------------------------------------------------
---- opts: gather ("ore"|"herb"|"both"), zones, location, includeEnemy, perZone
+--- opts: gather ("ore"|"herb"|"both"), mode ("gold"|"skill"), killFor ("all"|"skin"), zones, location,
+--- includeEnemy, perZone, skills
 function Combo:Run(opts)
     DS:Load()
     opts = opts or {}
@@ -388,6 +443,9 @@ function Combo:Run(opts)
     if not next(opts.skills) then for k, v in pairs(P.skills) do opts.skills[k] = v.rank end end
     -- a profession you don't have: assume enough skill to see the spots (like the Finder does)
     for k in pairs(Combo.KINDS[gather]) do opts.skills[k] = opts.skills[k] or 300 end
+    local killFor = opts.killFor or Combo:KillFor()
+    local assumedSkin = false
+    if killFor == "skin" and not opts.skills.skin then opts.skills.skin, assumedSkin = 300, true end
     if opts.includeEnemy == nil then opts.includeEnemy = s.includeEnemy end
     if not opts.zones and ns.Quests:IsActive() then
         local z1, z2 = ns.Quests:Zones()
@@ -395,7 +453,8 @@ function Combo:Run(opts)
     end
     local ctx = {
         speed = P:Speed(), active = s.activeFraction, gatherSec = s.gatherSeconds,
-        killSec = s.comboKillSeconds, pull = s.comboPullYards, respawn = math.max(30, s.comboRespawn),
+        killSec = s.comboKillSeconds, skinSec = s.comboSkinSeconds, pull = s.comboPullYards,
+        respawn = math.max(30, s.comboRespawn), mode = opts.mode or Combo:Mode(), killFor = killFor, assumedSkin = assumedSkin,
     }
     local out = {}
     for _, uiMap in ipairs(ns.Finder.ZoneCandidates(opts)) do
@@ -403,6 +462,6 @@ function Combo:Run(opts)
         if not ok then ns:Debug("combo " .. uiMap .. ": " .. tostring(err)) end
     end
     table.sort(out, function(a, b) return a.perHour > b.perHour end)
-    Combo.last = { opts = opts, results = out, gather = gather, time = time() }
+    Combo.last = { opts = opts, results = out, gather = gather, mode = ctx.mode, killFor = killFor, time = time() }
     return out
 end

@@ -253,14 +253,14 @@ function UI.Check(parent, label, get, set, tip)
     return c
 end
 
-function UI.Slider(parent, label, minV, maxV, step, get, set, fmt)
+function UI.Slider(parent, label, minV, maxV, step, get, set, fmt, width)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(220, 40)
+    f:SetSize((width or 170) + 50, 40)
     f.text = UI.Muted(f, label)
     f.text:SetPoint("TOPLEFT")
     local s = CreateFrame("Slider", nil, f, "BackdropTemplate")
     s:SetOrientation("HORIZONTAL")
-    s:SetSize(170, 10)
+    s:SetSize(width or 170, 10)
     s:SetPoint("TOPLEFT", 0, -20)
     UI.Skin(s, { 0.03, 0.03, 0.04, 1 }, T.border)
     s:SetThumbTexture(WHITE)

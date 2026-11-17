@@ -16,7 +16,10 @@ local DEFAULT_SETTINGS = {
     hud = true,                  -- route HUD with arrow
     includeEnemy = false,        -- rank enemy-faction zones too
     comboGather = "auto",        -- Gather + Kill: auto | ore | herb | both
-    comboKillSeconds = 30,       -- fight + loot (+ skin) per equal-level mob
+    comboMode = "gold",          -- gold | skill (gathering + skinning skill-ups)
+    comboKill = "all",           -- all | skin (only mobs you can skin)
+    comboKillSeconds = 30,       -- fight + loot per equal-level mob
+    comboSkinSeconds = 3,        -- extra per skin (cast + loot), only for mobs you can skin
     comboPullYards = 30,         -- mobs and nodes this close to the route count as "on the way"
     comboRespawn = 300,          -- seconds before a killed mob is back
     areaAlpha = 0.12, routeAlpha = 0.8,

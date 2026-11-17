@@ -361,6 +361,7 @@ test("gather + kill: time-shared rate, best-ratio mob choice, results usable as 
         if i > 1 then assertTrue(res[i - 1].perHour >= r.perHour, "sorted") end
         assertTrue(r.goal == "combo:ore" and r.source == "combo", "goal")
         assertTrue(math.abs(r.nodeRate + r.mobRate - r.perHour) < 1, "split adds up")
+        assertTrue(math.abs(r.nodeGold + r.skinGold + r.lootGold - r.perHour) < 1, "gold split adds up (gathering + skins + loot)")
         assertTrue(r.perHour + 1 >= r.nodesOnlyRate, "never worse than gathering alone")
         assertTrue(math.abs(r.walkSec + r.gatherSec + r.fightSec - r.loopSec) < 0.01, "time adds up")
         local avg = r.perHour / 3600
@@ -395,6 +396,64 @@ test("gather + kill: time-shared rate, best-ratio mob choice, results usable as 
     ns.Main.frame:Hide()
     ns.Route:Stop()
     for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error") and not tostring(l):find("Gather %+ Kill error"), tostring(l)) end
+end)
+
+test("gather + kill with skinning: skins counted only when you can skin, skin-only mode, skill-ups", function()
+    -- character: Mining (assumed) + Skinning 40 (mock), level 12
+    local res = ns.Combo:Run({ gather = "ore", perZone = 2, killFor = "all", mode = "gold" })
+    assertTrue(#res > 0, "results")
+    for _, r in ipairs(res) do
+        for _, m in ipairs(r.worthy) do
+            if m.skinOK then
+                assertTrue(m.req <= 40, "skinnable within skill")
+            else
+                assertTrue(m.skinG == 0, "no skin value without the skill")
+            end
+        end
+    end
+    -- skinnable only: every mob considered is one you can skin
+    local skinRes = ns.Combo:Run({ gather = "ore", perZone = 2, killFor = "skin", mode = "gold" })
+    assertTrue(#skinRes > 0, "skin-only results")
+    local anySkin = 0
+    for _, r in ipairs(skinRes) do
+        assertTrue(r.goal == "combo:ore:skin", "goal key")
+        for _, m in ipairs(r.worthy) do assertTrue(m.skinOK, "worthy mob skinnable") anySkin = anySkin + 1 end
+        for _, m in ipairs(r.skipped) do assertTrue(m.skinOK, "skipped mob skinnable") end
+        assertTrue(r.skinsPerHour <= r.killsPerHour + 1e-6, "skins <= kills")
+    end
+    assertTrue(ns.Finder:GoalInfo("combo:ore:skin").label == "Mining + skinning", "label")
+    -- no skinning skill at all: skins never counted
+    local noSkin = ns.Combo:Run({ gather = "ore", perZone = 1, killFor = "all", mode = "gold", skills = { ore = 300 } })
+    for _, r in ipairs(noSkin) do assertTrue(r.skinGold == 0 and r.skinsPerHour == 0, "no skins without Skinning") end
+    -- slower skinning never helps
+    local zone = skinRes[1].uiMap
+    local old = ns.settings.comboSkinSeconds
+    ns.settings.comboSkinSeconds = 0
+    local quick = ns.Combo:Run({ gather = "ore", zones = { zone }, perZone = 1, killFor = "skin", mode = "gold" })[1]
+    ns.settings.comboSkinSeconds = 10
+    local slow = ns.Combo:Run({ gather = "ore", zones = { zone }, perZone = 1, killFor = "skin", mode = "gold" })[1]
+    ns.settings.comboSkinSeconds = old
+    assertTrue(quick.perHour + 1e-6 >= slow.perHour, "skin time monotonic")
+    -- skill-ups mode: gathering + skinning skill-ups, best-ratio property in skill units
+    local sk = ns.Combo:Run({ gather = "herb", perZone = 2, killFor = "skin", mode = "skill" })
+    assertTrue(#sk > 0, "skill results")
+    for _, r in ipairs(sk) do
+        assertTrue(r.mode == "skill" and math.abs(r.nodeSU + r.skinSU - r.perHour) < 0.01, "skill split adds up")
+        local avg = r.perHour / 3600
+        for _, m in ipairs(r.worthy) do assertTrue(m.perMin / 60 >= avg - 1e-9 and m.su > 0, "worthy skill mob") end
+    end
+    assertTrue(ns.Main:RateText(sk[1]):find("skill%-ups"), "rate text")
+    print(string.format("       skin combo top: %s %s/h (ore %s + skins %s + loot %s), %d skinnable mobs worth it; skill top %s: %.0f skill-ups/h",
+        skinRes[1].zoneName, ns.Money(skinRes[1].perHour, true), ns.Money(skinRes[1].nodeGold, true), ns.Money(skinRes[1].skinGold, true),
+        ns.Money(skinRes[1].lootGold, true), anySkin, sk[1].zoneName, sk[1].perHour))
+    -- UI renders both modes
+    ns.settings.comboKill, ns.settings.comboMode = "skin", "skill"
+    ns.Main:Toggle("combo")
+    ns.Main.tabs[2].panel:Run()
+    ns.settings.comboKill, ns.settings.comboMode = "all", "gold"
+    ns.Main.tabs[2].panel:Run()
+    ns.Main.frame:Hide()
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("Gather %+ Kill error") and not tostring(l):find("UI error"), tostring(l)) end
 end)
 
 test("settings migration to v4 (route only)", function()

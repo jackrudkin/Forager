@@ -16,6 +16,9 @@ local COMBO = {
     ["combo:herb"] = { label = "Herbs + mobs", short = "Herbs + mobs", icon = "Interface\\Icons\\Trade_Herbalism", gather = "herb" },
     ["combo:both"] = { label = "Herbs, ore + mobs", short = "Herbs, ore + mobs", icon = "Interface\\Icons\\INV_Pick_02", gather = "both" },
 }
+COMBO["combo:ore:skin"] = { label = "Mining + skinning", short = "Mining + skinning", icon = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01", gather = "ore" }
+COMBO["combo:herb:skin"] = { label = "Herbs + skinning", short = "Herbs + skinning", icon = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01", gather = "herb" }
+COMBO["combo:both:skin"] = { label = "Herbs, ore + skinning", short = "Herbs, ore + skinning", icon = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01", gather = "both" }
 for k, g in pairs(COMBO) do g.key, g.kind = k, "combo" end
 
 function Finder:GoalInfo(key)
