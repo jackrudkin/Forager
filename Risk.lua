@@ -21,6 +21,16 @@ Risk.LEVELS = {
 }
 Risk.FILTER = { any = 101, high = 65, medium = 40, low = 20 } -- hide spots at or above this score
 
+-- "Realistic spots": solo-farmable at your level. Mob difficulty colours: yellow mobs are always
+-- within two levels of you, orange 3-4 above, red 5-9 above, skull 10+ (wowpedia DifficultyColors).
+Risk.REALISTIC = {
+    above = 2,     -- no mob more than this many levels above you (no orange, red or skull)
+    death = 40,    -- death risk below High
+    hyper = 40,    -- hyperspawn risk below High
+    pve = 40,      -- death and hyperspawn together below High (Low or Medium)
+    gank = 65,     -- gank risk below Very high: no enemy territory or enemy camp next door
+}
+
 local PACK_YARDS = 12      -- mobs this close to each other tend to pull together
 local DEATH_CELL = 50      -- death log cells: 2% of the map
 
@@ -101,6 +111,94 @@ local function mobsOf(uiMap)
     return list
 end
 
+--- Too hard to fight solo in Realistic mode: elite, or more than 2 levels above you.
+function Risk.TooHard(m, level)
+    local elite = m.rank == 1 or m.rank == 2 or m.rank == 3
+    return elite or (m.maxLevel or 0) > (level or 1) + Risk.REALISTIC.above
+end
+
+local unsafeCache = {}
+--- Grid cells (g x g, index cy * g + cx) that Realistic mode avoids: within 2% of the map of a mob
+--- that is too hard (orange/red/skull or elite), or within 300 yd of an enemy settlement on PvP.
+function Risk:UnsafeCells(uiMap, g, level)
+    level = level or P:Level()
+    local ruleset = Risk:Ruleset()
+    local key = table.concat({ P:Faction(), uiMap, g, level, ruleset }, ":")
+    local cells = unsafeCache[key]
+    if cells then return cells end
+    cells = {}
+    local m = 0.02
+    local function mark(x1, y1, x2, y2)
+        local cx1, cy1 = math.max(0, math.floor(x1 * g)), math.max(0, math.floor(y1 * g))
+        local cx2, cy2 = math.min(g - 1, math.floor(x2 * g)), math.min(g - 1, math.floor(y2 * g))
+        for cy = cy1, cy2 do for cx = cx1, cx2 do cells[cy * g + cx] = true end end
+    end
+    local limit = level + Risk.REALISTIC.above
+    for _, p in ipairs(mobsOf(uiMap)) do
+        if p[4] or p[3] > limit then mark(p[1] - m, p[2] - m, p[1] + m, p[2] + m) end
+    end
+    local zone = ns.Zones[uiMap]
+    if ruleset == "pvp" and zone and zone.faction ~= "S" then
+        local faction = P:Faction()
+        for _, hub in ipairs(zone.hubs or {}) do
+            if hub[1] ~= faction then
+                for cy = 0, g - 1 do
+                    for cx = 0, g - 1 do
+                        if P:Distance(uiMap, (cx + 0.5) / g, (cy + 0.5) / g, hub[2], hub[3]) < 300 then cells[cy * g + cx] = true end
+                    end
+                end
+            end
+        end
+    end
+    unsafeCache[key] = cells
+    return cells
+end
+
+--- Can an assessed spot be farmed solo at your level? ok, reasons (short phrases).
+function Risk:RealisticCheck(r)
+    local d = r and r.danger
+    if not d then return true, {} end
+    local R, why = Risk.REALISTIC, {}
+    if (d.maxAbove or 0) > R.above then why[#why + 1] = string.format("mobs up to %d levels above you", d.maxAbove) end
+    if (d.elites or 0) > 0 then why[#why + 1] = "elites" end
+    if d.death >= R.death then why[#why + 1] = "death risk " .. Risk:Label(d.death):lower() end
+    if d.hyper >= R.hyper then why[#why + 1] = "hyperspawn" end
+    if d.gank >= R.gank then why[#why + 1] = "gank risk very high" end
+    local pve = 100 * (1 - (1 - d.death / 100) * (1 - d.hyper / 100))
+    if pve >= R.pve and #why == 0 then why[#why + 1] = "death + hyperspawn risk high" end
+    return #why == 0, why
+end
+
+--- Count a spot hidden by Realistic spots under its main reason.
+function Risk.AddHidden(hidden, why)
+    if not hidden then return end
+    hidden.n = hidden.n + 1
+    local main = (why[1] or "risk"):gsub("%d+ levels", "X levels")
+    hidden.reasons[main] = (hidden.reasons[main] or 0) + 1
+end
+
+--- Keep only realistic spots. Returns kept, hidden = { n, reasons = { [reason] = count } } (added to).
+function Risk:Realistic(results, hidden)
+    local out = {}
+    hidden = hidden or { n = 0, reasons = {} }
+    for _, r in ipairs(results) do
+        local ok, why = Risk:RealisticCheck(r)
+        if ok then out[#out + 1] = r else Risk.AddHidden(hidden, why) end
+    end
+    return out, hidden
+end
+
+--- "3 hidden: mobs too high 2, elites 1" for empty states.
+function Risk.HiddenText(hidden)
+    if not hidden or hidden.n == 0 then return nil end
+    local parts = {}
+    for k, c in pairs(hidden.reasons) do parts[#parts + 1] = { k:gsub("up to X levels above you", "too high for you"), c } end
+    table.sort(parts, function(a, b) return a[2] > b[2] end)
+    local t = {}
+    for _, e in ipairs(parts) do t[#t + 1] = e[1] .. " (" .. e[2] .. ")" end
+    return string.format("Realistic spots hid %d spot%s: %s.", hidden.n, hidden.n > 1 and "s" or "", table.concat(t, ", "))
+end
+
 local function greyBelow(level)
     if level <= 5 then return 0 end
     if level <= 39 then return level - 5 - math.floor(level / 10) end
@@ -163,6 +261,7 @@ function Risk:Assess(r)
 
     -- death and hyperspawn (mobs in and around the area) ------------------------
     local death, hyper = 0, 0
+    local maxAbove, eliteCount, deathCount, packAvg, density = nil, 0, 0, 0, 0
     if rect then
         local m = 0.02
         local x1, y1, x2, y2 = rect[1] - m, rect[2] - m, rect[3] + m, rect[4] + m
@@ -179,6 +278,7 @@ function Risk:Assess(r)
             end
         end
         local over = maxLvl - level
+        maxAbove, eliteCount = maxLvl > 0 and over or nil, elites
         if over > 0 then
             death = death + math.min(50, over * 12)
             why.death[#why.death + 1] = string.format("mobs up to %d levels above you", over)
@@ -204,6 +304,7 @@ function Risk:Assess(r)
                 sum, cnt = sum + k, cnt + 1
             end
             local avg = sum / cnt
+            packAvg = avg
             if avg >= 2 then death = death + 20 why.death[#why.death + 1] = string.format("tight packs (%.1f mobs nearby each)", avg)
             elseif avg >= 1 then death = death + 10 why.death[#why.death + 1] = "mobs in pairs" end
         end
@@ -214,6 +315,7 @@ function Risk:Assess(r)
             why.hyper[#why.hyper + 1] = "cave (fast respawns are worst in caves)"
         end
         local deaths = Risk:DeathsIn(r.uiMap, rect)
+        deathCount = deaths
         if deaths > 0 then
             death = death + math.min(45, deaths * 15)
             why.death[#why.death + 1] = string.format("you died here %d time%s", deaths, deaths > 1 and "s" or "")
@@ -221,6 +323,7 @@ function Risk:Assess(r)
         -- spawn density per 100 x 100 yd
         local areaYd2 = math.max(1, (x2 - x1) * w * (y2 - y1) * h)
         local dens = n / (areaYd2 / 10000)
+        density = dens
         local add = (dens >= 3 and 60) or (dens >= 2 and 45) or (dens >= 1 and 25) or (dens >= 0.5 and 10) or 0
         hyper = hyper + add
         if add > 0 then why.hyper[#why.hyper + 1] = string.format("%.1f mob spawns per 100x100 yd", dens) end
@@ -228,7 +331,8 @@ function Risk:Assess(r)
     death, hyper = ns.Clamp(death, 0, 100), ns.Clamp(hyper, 0, 100)
     local score = 100 * (1 - (1 - gank / 100) * (1 - death / 100) * (1 - hyper / 100))
     local label, color = Risk:Label(score)
-    r.danger = { score = score, label = label, color = color, gank = gank, death = death, hyper = hyper, why = why, guess = guess }
+    r.danger = { score = score, label = label, color = color, gank = gank, death = death, hyper = hyper, why = why, guess = guess,
+        maxAbove = maxAbove, elites = eliteCount, deaths = deathCount, packs = packAvg, density = density }
     return r.danger
 end
 

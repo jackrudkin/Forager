@@ -283,6 +283,8 @@ local function zoneCandidates(opts)
     end
     for id, z in pairs(ns.Zones) do
         local tooHigh = z.min > (opts.level or 1) + 5 and not ns.settings.showDangerous and not opts.anyLevel
+        -- Realistic: a zone whose weakest mobs are already orange or worse has no realistic spot
+        if opts.realistic and z.min > (opts.level or 1) + ns.Risk.REALISTIC.above then tooHigh = true end
         local noCaves = opts.location == "cave" and not ns.Caves:ZoneHasCaves(id)
         if z.faction ~= "S" and not tooHigh and not noCaves and (opts.includeEnemy or z.faction == "C" or z.faction == opts.faction) then
             list[#list + 1] = id
@@ -312,6 +314,7 @@ local function evalNodes(uiMap, goal, opts, out)
     local have = kind and opts.skills[kind]
     local grid, cellPts = newGrid(), {}
     local minSkill
+    local unsafe = opts.realistic and ns.Risk:UnsafeCells(uiMap, GRID, opts.level) or nil
     for _, pt in ipairs(DS:GetZoneNodes(uiMap)) do
         local t = DS:GetType(pt.t)
         local w
@@ -328,9 +331,9 @@ local function evalNodes(uiMap, goal, opts, out)
                 elseif col ~= "red" then w = Finder:NodeValue(t) end
             end
         end
-        if w and w > 0 and allowed(opts, uiMap, pt.x, pt.y) then
-            local cx, cy = cellOf(pt.x, pt.y)
-            local idx = cy * GRID + cx
+        local cx, cy = cellOf(pt.x, pt.y)
+        local idx = cy * GRID + cx
+        if w and w > 0 and not (unsafe and unsafe[idx]) and allowed(opts, uiMap, pt.x, pt.y) then
             grid[idx] = grid[idx] + w
             cellPts[idx] = cellPts[idx] or {}
             table.insert(cellPts[idx], { x = pt.x, y = pt.y, w = w, t = pt.t })
@@ -388,7 +391,7 @@ local function evalNodes(uiMap, goal, opts, out)
         local rect = { cx / GRID, cy / GRID, (cx + W) / GRID, (cy + W) / GRID }
         out[#out + 1] = {
             uiMap = uiMap, goal = goal.key, mode = (itemID and "gold") or opts.mode, rank = rank, source = "node",
-            rect = opts.location == "cave" and tightRect(pts, rect) or rect,
+            rect = (opts.location == "cave" or opts.realistic) and tightRect(pts, rect) or rect,
             points = pts, route = route, perHour = perHour, loopSec = loopSec, unitsPerHour = nodesPerHour,
             unitLabel = "nodes/h", count = n, minSkill = minSkill, mix = mix, items = list,
             itemUnits = itemID and (items[itemID] and items[itemID].perHour or 0) or nil,
@@ -406,9 +409,10 @@ local function evalMobs(uiMap, goal, opts, out)
     local itemID = goal.item
     local needsSkill = goal.key == "skin" or goal.key == "leather"
     local skillMode = opts.mode == "skill" and (needsSkill or goal.key == "lockbox") and not itemID
+    local unsafe = opts.realistic and ns.Risk:UnsafeCells(uiMap, GRID, opts.level) or nil
     for npcID, pts in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npcID)
-        if m and not DS:IsFriendly(m) then
+        if m and not DS:IsFriendly(m) and not (opts.realistic and ns.Risk.TooHard(m, opts.level)) then
             local lf = levelFactor(m, opts.level, s.showDangerous or opts.anyLevel)
             local w
             if lf > 0 then
@@ -424,10 +428,10 @@ local function evalMobs(uiMap, goal, opts, out)
             if w and w > 0 then
                 local kept = 0
                 for i = 1, #pts, 2 do
-                    if allowed(opts, uiMap, pts[i], pts[i + 1]) then
+                    local cx, cy = cellOf(pts[i], pts[i + 1])
+                    local idx = cy * GRID + cx
+                    if not (unsafe and unsafe[idx]) and allowed(opts, uiMap, pts[i], pts[i + 1]) then
                         kept = kept + 1
-                        local cx, cy = cellOf(pts[i], pts[i + 1])
-                        local idx = cy * GRID + cx
                         grid[idx] = grid[idx] + w
                         cellPts[idx] = cellPts[idx] or {}
                         table.insert(cellPts[idx], { x = pts[i], y = pts[i + 1], w = w, npc = npcID })
@@ -487,7 +491,7 @@ local function evalMobs(uiMap, goal, opts, out)
         local rect = { cx / GRID, cy / GRID, (cx + W) / GRID, (cy + W) / GRID }
         out[#out + 1] = {
             uiMap = uiMap, goal = goal.key, mode = skillMode and "skill" or "gold", rank = rank, source = "mob",
-            rect = opts.location == "cave" and tightRect(pts, rect) or rect,
+            rect = (opts.location == "cave" or opts.realistic) and tightRect(pts, rect) or rect,
             points = pts, route = route, perHour = skillMode and skillups or gold, unitsPerHour = kph, unitLabel = "kills/h",
             perUnit = gold / math.max(1, kph),
             count = n, mobs = mobs, minLevel = minL, maxLevel = maxL, minSkill = minSkill, items = list,
@@ -548,6 +552,7 @@ function Finder:Run(opts)
     opts.level = opts.level or P:Level()
     opts.faction = opts.faction or P:Faction()
     opts.location = opts.location or ns.settings.location or "any"
+    if opts.realistic == nil then opts.realistic = ns.settings.realistic and true or false end
     opts.skills = opts.skills or {}
     if not next(opts.skills) then
         for k, v in pairs(P.skills) do opts.skills[k] = v.rank end
@@ -556,6 +561,10 @@ function Finder:Run(opts)
         opts.mode = "gold"
     end
     local out = {}
+    -- Realistic: evaluate spare areas per zone so a spot that fails the check is replaced by the next one
+    local want = opts.perZone or 1
+    local hidden = opts.realistic and { n = 0, reasons = {} } or nil
+    if opts.realistic then opts.perZone = want * 3 end
     for _, uiMap in ipairs(zoneCandidates(opts)) do
         local zone = ns.Zones[uiMap]
         local before = #out
@@ -575,7 +584,24 @@ function Finder:Run(opts)
             nameArea(r)
             ns.Risk:Assess(r)
         end
+        if opts.realistic then
+            local keptBy, j = {}, before
+            for i = before + 1, #out do
+                local r = out[i]
+                local ok, why = ns.Risk:RealisticCheck(r)
+                local src = r.source or "?"
+                if ok and (keptBy[src] or 0) < want then
+                    keptBy[src] = (keptBy[src] or 0) + 1
+                    j = j + 1
+                    out[j] = r
+                elseif not ok then
+                    ns.Risk.AddHidden(hidden, why)
+                end
+            end
+            for i = #out, j + 1, -1 do out[i] = nil end
+        end
     end
+    opts.perZone = want
     if opts.questing then Finder:ApplyQuesting(out, opts) end
     local byUnits = goal.kind == "item" and (ns.Prices:Get(goal.item)) == 0
     table.sort(out, function(a, b)
@@ -583,7 +609,7 @@ function Finder:Run(opts)
         return (a.score or a.perHour) > (b.score or b.perHour)
     end)
     out = ns.Risk:Filter(out)
-    Finder.last = { opts = opts, results = out, goal = goal, time = time(), byUnits = byUnits }
+    Finder.last = { opts = opts, results = out, goal = goal, time = time(), byUnits = byUnits, hidden = hidden }
     ns:Fire("FORAGER_FINDER_UPDATED")
     return out
 end

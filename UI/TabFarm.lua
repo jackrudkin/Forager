@@ -143,6 +143,9 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     local enemy = UI.Check(row3, "Enemy zones", function() return ns.settings.includeEnemy end,
         function(v) ns.settings.includeEnemy = v ns:Fire("FORAGER_GOAL_CHANGED") end, "Also rank zones controlled by the other faction.")
     enemy:SetPoint("LEFT", scope, "RIGHT", 10, 0)
+    local realistic = UI.Check(row3, "Realistic spots", function() return ns.settings.realistic end,
+        function(v) ns.settings.realistic = v ns:Fire("FORAGER_GOAL_CHANGED") end, "Only spots you can farm solo at your level: no mobs more than 2 levels above you (orange, red or skull) or elites in or near the area, death and hyperspawn risk below High, gank and overall risk below Very high. Routes steer around dangerous ground.")
+    realistic:SetPoint("LEFT", enemy.label, "RIGHT", 10, 0)
 
     ---------------------------------------------------------------------------
     -- results (cards)
@@ -374,6 +377,11 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     local function emptyText()
         local goal = Finder:GoalInfo(Main:Goal())
         local lines = { "|cffffffffNo spots for " .. goal.label .. "|r with your current skill and level." }
+        local hid = ns.Risk.HiddenText(Finder.last and Finder.last.hidden)
+        if hid then
+            lines[#lines + 1] = ""
+            lines[#lines + 1] = hid .. " Untick Realistic spots to see them, or come back a level or two later."
+        end
         if ns.settings.location == "cave" then
             lines[#lines + 1] = ""
             lines[#lines + 1] = "Cave spots come from the map areas you have explored and the caves you've walked through. Caves in zones for your level:"
@@ -412,6 +420,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         rank:Refresh()
         loc:Refresh()
         scope:Refresh()
+        realistic:SetChecked(ns.settings.realistic and true or false)
         local ok, res = pcall(Finder.Run, Finder, Finder:Options(Main:Goal(), ns.settings.mode))
         if not ok then
             ns:Print("Finder error: " .. tostring(res))

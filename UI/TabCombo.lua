@@ -83,12 +83,18 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     loc:SetPoint("LEFT", lLbl, "RIGHT", 8, 0)
     local sLbl = UI.Muted(panel, "Search in")
     sLbl:SetPoint("LEFT", loc, "RIGHT", 16, 0)
-    local scope = UI.Dropdown(panel, 190, function() return Main.ZoneItems(true, true) end,
+    local scope = UI.Dropdown(panel, 160, function() return Main.ZoneItems(true, true) end,
         function() return ns.char.questZone or false end,
         function(v) ns.Quests:Set(v or nil, v and ns.char.questZone2 or nil) end)
     scope:SetPoint("LEFT", sLbl, "RIGHT", 8, 0)
+    local realistic = UI.Check(panel, "Realistic spots", function() return ns.settings.realistic end,
+        function(v) ns.settings.realistic = v panel:Rerun() ns:Fire("FORAGER_GOAL_CHANGED") end, "Only spots you can farm solo at your level: no mobs more than 2 levels above you (orange, red or skull) or elites in or near the area, death and hyperspawn risk below High, gank and overall risk below Very high. Routes steer around dangerous ground.")
+    realistic:SetPoint("LEFT", scope, "RIGHT", 10, 0)
     local skills = UI.Muted(panel, "")
-    skills:SetPoint("LEFT", scope, "RIGHT", 14, 0)
+    skills:SetPoint("LEFT", realistic.label, "RIGHT", 12, 0)
+    skills:SetPoint("RIGHT", panel, "RIGHT", -4, 0)
+    skills:SetWordWrap(false)
+    skills:SetJustifyH("LEFT")
 
     local function slider(x, label, key, lo, hi, step, fmt, tip)
         local s = UI.Slider(panel, label, lo, hi, step, function() return ns.settings[key] end,
@@ -375,6 +381,8 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     local function emptyText()
         local g = ns.Combo:DefaultGather()
         local lines = { "|cffffffffNo spots found|r for " .. (GATHER_LABEL[g] or g) .. (ns.Combo:KillFor() == "skin" and " + skinning" or " + mobs") .. "." }
+        local hid = ns.Risk.HiddenText(ns.Combo.last and ns.Combo.last.hidden)
+        if hid then lines[#lines + 1] = hid .. " Untick Realistic spots to see them." end
         if ns.settings.location == "cave" then lines[#lines + 1] = "Caves fill in as you explore them; try Location: Anywhere."
         elseif ns.Quests:IsActive() then lines[#lines + 1] = "Set Search in to Everywhere to look beyond your questing zone." end
         lines[#lines + 1] = ""
@@ -399,6 +407,7 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
         rank:Refresh()
         loc:Refresh()
         scope:Refresh()
+        realistic:SetChecked(ns.settings.realistic and true or false)
         skills:SetText(skillLine())
         local ok, res = pcall(ns.Combo.Run, ns.Combo, { perZone = 2 })
         if not ok then ns:Print("Gather + Kill error: " .. tostring(res)) res = {} end

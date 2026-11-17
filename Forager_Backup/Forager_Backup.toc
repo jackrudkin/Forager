@@ -2,7 +2,7 @@
 ## Title: Forager Backup
 ## Notes: Storage-only addon: keeps a second copy of Forager's data in its own SavedVariables file.
 ## Author: Jack
-## Version: 1.7.0
+## Version: 1.8.0
 ## X-License: GPL-3.0-or-later
 ## Dependencies: Forager
 ## SavedVariables: ForagerBackupDB

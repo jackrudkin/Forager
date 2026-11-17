@@ -39,6 +39,7 @@ local DEFAULT_SETTINGS = {
     -- prices
     priceSources = { "AuctionTrends", "Auctionator", "TSM", "Vendor" },
     tsmPrice = "dbmarket",       -- TradeSkillMaster price string when TSM is a source
+    realistic = false,           -- Realistic spots: solo-farmable at your level (Farm and Gather + Kill)
     -- tooltip
     tooltip = true, tooltipGear = true, tooltipFarm = true, tooltipSkin = true, tooltipPickpocket = true,
     -- sharing

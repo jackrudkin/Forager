@@ -4,6 +4,26 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 1.8: Realistic spots
+
+Tick **Realistic spots** in the Farm or Gather + Kill tab (or type `/forage realistic`) to see only spots you can farm solo at your level. The two tabs share the setting, and it's remembered.
+
+| Rule | Why |
+|---|---|
+| No mob more than 2 levels above you in or near the area | Yellow mobs are within 2 levels of you; orange is 3–4 above, red 5–9, skull 10+ (wowpedia difficulty colours) |
+| No elites in or near the area | Elites aren't soloable at their level |
+| Death and hyperspawn risk each below High, and Low/Medium together | No tight packs of higher mobs or very dense spawns |
+| Gank risk below Very high (PvP ruleset) | No enemy territory and no enemy camp within 300 yd. Contested zones stay |
+
+- The search steers around dangerous ground. Zone grid cells near too-hard mobs (and near enemy camps on PvP) are skipped when picking areas and routes.
+- It also checks spare areas, so a zone's best realistic spot replaces one that fails.
+- Mobs that are too hard are never picked as farm targets or as mobs worth killing.
+- If nothing is left, the panel says how many spots were hidden and why.
+
+Example in testing: level 25 with Mining 150. Without it, the top ore spots were Arathi Highlands and Alterac Mountains, with mobs 14–25 levels above you. With it, they're Wetlands, Westfall and Duskwood, all Low or Medium risk.
+
+Tip: if you play on a Normal (PvE) ruleset, set **Settings → Your ruleset → Normal**. Until Forager has seen you unflagged in a contested zone, it assumes PvP and adds gank risk.
+
 ## What's new in 1.7: more accurate numbers
 
 The data was researched against Forever sources. Wherever Forever data exists it now replaces the Classic values, and from now on Forager learns from your own play. See [Data sources & accuracy](#data-sources--accuracy).
@@ -103,8 +123,8 @@ The sidebar has seven tabs. Below them, the **Now farming** card shows the activ
 
 | Tab | What's there |
 |---|---|
-| **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** toggle. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
-| **Gather + Kill** | **Gather**: Mining / Herbs / Both; **Kill**: All mobs / Skinnable only; **Rank by**: Gold / hour or Skill-ups / hour; plus **Location** and **Search in** (shared with Farm). Sliders: Seconds per kill, Seconds per skin, Reach from the route, Mob respawn. Cards show the total and the split (gathering + skins + loot, or gathering + skinning skill-ups), plus the gain over doing either alone. Detail panel: map preview; per-hour split with "only gathering here" and "only mobs here" for comparison; the loop's walk / gather / fight minutes; which mobs are **worth killing** (gold per kill, gold per fighting minute, kills/hour) and which to **skip**; top loot per hour; Start farming / Show on world map / Set waypoint. |
+| **Farm** | **What do you want to farm?** search box (category, item or mob; suggestions as you type). Category chips: Herbs, Ore, Skinning, Fishing, Cloth, Greens (DE), Leather, Meat, Elemental, Lockboxes, Raw gold. **Rank by** Gold/hour or Skill-ups/hour. **Location**: Anywhere / Caves & mines / Outdoors. **Search in**: Everywhere (your level), Current zone (follows you), or a zone you're questing in. **Enemy zones** and **Realistic spots** toggles. Below that is a ranked list of cards (zone · subzone/cave, rate, mob levels or node skill, risk, loot icons). The detail panel has a zone map preview with the area, spawns, route and your position; what you get per hour (quantity and value per item); the mobs or nodes in the area; and buttons for **Start farming here**, **Show on world map** (preview only) and **Set waypoint**. |
+| **Gather + Kill** | **Gather**: Mining / Herbs / Both; **Kill**: All mobs / Skinnable only; **Rank by**: Gold / hour or Skill-ups / hour; plus **Location**, **Search in** and **Realistic spots** (shared with Farm). Sliders: Seconds per kill, Seconds per skin, Reach from the route, Mob respawn. Cards show the total and the split (gathering + skins + loot, or gathering + skinning skill-ups), plus the gain over doing either alone. Detail panel: map preview; per-hour split with "only gathering here" and "only mobs here" for comparison; the loop's walk / gather / fight minutes; which mobs are **worth killing** (gold per kill, gold per fighting minute, kills/hour) and which to **skip**; top loot per hour; Start farming / Show on world map / Set waypoint. |
 | **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
 | **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
 | **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
@@ -189,6 +209,7 @@ Each spot gets a score from 0 to 100, made of three parts:
 - **Ruleset** (Settings → Your ruleset): on Forever's PvP ruleset you're flagged in contested and enemy zones, so being unflagged there once proves you're on Normal. **Auto** learns this, and assumes PvP until it knows.
 - **Deaths:** Forager logs where you die (2% map cells) and raises the death risk there.
 - **Filter:** Settings → **Hide spots with risk**: Show all / Very high / High or worse / Medium or worse.
+- **Realistic spots** (Farm and Gather + Kill): a stricter filter for solo farming at your level. It allows no orange/red/skull mobs or elites near the area, death and hyperspawn risk Low or Medium, and gank risk below Very high. It also steers the area search away from dangerous ground. See [What's new in 1.8](#whats-new-in-18-realistic-spots).
 - **Where it shows:**
   - on result cards;
   - in the detail panels (hover for the reasons);
@@ -245,6 +266,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `/forage quest <zone>` / `current` / `auto` / `off` | Set or clear the questing zone |
 | `/forage quest2 <zone>` / `off` | Optional next quest hub (ranked too) |
 | `/forage mode gold` / `skill` | Rank by gold/hour or skill-ups/hour |
+| `/forage realistic` [`on` / `off`] | Only spots you can farm solo at your level |
 | `/forage mob` | Print Forager's lines for your target |
 | `/forage import` | Import GatherMate2 / GatherLite nodes |
 | `/forage save` | Write data to disk now (reloads UI) |
@@ -315,7 +337,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 40 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 41 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -324,7 +346,8 @@ Not changed, because no better data was found: node spawn positions (Forever red
   - Gather + Kill: split and loop time add up, never below gathering alone, worthy/skipped mobs on the right side of the loop rate, slower kills never raise the rate, ore/herb/both, start as a farm;
   - Gather + Kill skinning: skins only within your skill, skin-only mode, no skins without Skinning, skin time never helps, skill-ups split and best-ratio property, both modes render;
   - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI;
-  - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade.
+  - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade;
+  - Realistic spots (1.8): orange/elite mobs excluded, every kept spot passes the rules (Farm ore/skinning/gold, Gather + Kill, PvP ruleset), spots still found at level 25, setting, slash command, UI.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).

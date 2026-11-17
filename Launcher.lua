@@ -99,6 +99,7 @@ local HELP = {
     "/forage quest <zone name> | current | auto | off - set questing zone",
     "/forage quest2 <zone name> | off - optional next quest hub (ranked too)",
     "/forage mode gold | skill - rank by gold/hour or skill-ups/hour",
+    "/forage realistic [on | off] - only spots you can farm solo at your level",
     "/forage mob - print Forager lines for your target",
     "/forage import - import GatherMate2/GatherLite nodes",
     "/forage save - write data to disk now (reloads UI)",
@@ -169,6 +170,11 @@ local function slash(msg)
         end
     elseif cmd == "mode" then
         if rest == "gold" or rest == "skill" then ns.settings.mode = rest ns:Print("Ranking by " .. (rest == "gold" and "gold/hour" or "skill-ups/hour")) end
+    elseif cmd == "realistic" then
+        if rest == "on" then ns.settings.realistic = true elseif rest == "off" then ns.settings.realistic = false
+        else ns.settings.realistic = not ns.settings.realistic end
+        ns:Print("Realistic spots " .. (ns.settings.realistic and "on: only spots you can farm solo at your level." or "off."))
+        ns:Fire("FORAGER_GOAL_CHANGED")
     elseif cmd == "mob" then
         local guid = ns.Safe(UnitGUID("target"))
         local id, kind = ns.IDFromGUID(guid)

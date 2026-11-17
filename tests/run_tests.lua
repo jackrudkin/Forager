@@ -331,6 +331,66 @@ test("TradeSkillMaster price source (TSM_API.GetCustomPriceValue)", function()
     ns.Prices:Flush()
 end)
 
+test("realistic spots: no orange/red/elite mobs, risk under the caps, still finds spots", function()
+    local savedLevel, savedSkills = M.level, M.skills
+    local savedRs = ns.settings.ruleset
+    M.level = 25
+    M.skills = { { "Mining", 150, 150, 186 }, { "Skinning", 125, 150, 393 } }
+    ns.Player:RefreshSkills()
+    ns.settings.ruleset = "normal"
+    -- the mob test
+    local R = ns.Risk.REALISTIC
+    assertTrue(ns.Risk.TooHard({ maxLevel = 28, rank = 0 }, 25) and not ns.Risk.TooHard({ maxLevel = 27, rank = 0 }, 25)
+        and ns.Risk.TooHard({ maxLevel = 20, rank = 1 }, 25), "orange (+3) and elites are too hard, yellow (+2) is fine")
+    local function check(list, label)
+        for _, r in ipairs(list) do
+            local d = r.danger
+            assertTrue(d and (d.maxAbove or 0) <= R.above and (d.elites or 0) == 0 and d.death < R.death and d.hyper < R.hyper
+                and d.gank < R.gank and 100 * (1 - (1 - d.death / 100) * (1 - d.hyper / 100)) < R.pve
+                and (d.label == "Low" or d.label == "Medium"), label .. " " .. tostring(r.zoneName) .. " broke a rule")
+            for _, mob in ipairs(r.mobs or {}) do assertTrue(not ns.Risk.TooHard(mob.m, 25), label .. ": too-hard mob chosen") end
+            for _, w in ipairs(r.worthy or {}) do assertTrue(not ns.Risk.TooHard(w.m, 25), label .. ": too-hard mob worth killing") end
+        end
+    end
+    for _, goal in ipairs({ "ore", "skin", "gold" }) do
+        local all = ns.Finder:Run({ goal = goal, perZone = 2, realistic = false })
+        local real = ns.Finder:Run({ goal = goal, perZone = 2, realistic = true })
+        local hidden = ns.Finder.last.hidden
+        local unrealistic = 0
+        for _, r in ipairs(all) do if not ns.Risk:RealisticCheck(r) then unrealistic = unrealistic + 1 end end
+        print(string.format("    %s: %d spots (%d unrealistic) -> %d realistic, %d hidden after search", goal, #all, unrealistic, #real, hidden.n))
+
+        assertTrue(#real > 0, goal .. ": realistic spots exist at level 25")
+        check(real, goal)
+    end
+    -- PvP ruleset: contested zones stay, but never enemy territory or right next to an enemy camp
+    ns.settings.ruleset = "pvp"
+    local pvp = ns.Finder:Run({ goal = "ore", perZone = 2, realistic = true })
+    assertTrue(#pvp > 0, "PvP: realistic spots exist")
+    for _, r in ipairs(pvp) do assertTrue(r.danger.gank < R.gank, "PvP: no very high gank risk in " .. r.zoneName) end
+    ns.settings.ruleset = "normal"
+    ns.settings.comboKill = "skin"
+    local combo = ns.Combo:Run({ gather = "ore", perZone = 2, realistic = true })
+    print(string.format("    gather + kill (mining + skinning): %d realistic, %d hidden", #combo, ns.Combo.last.hidden.n))
+    assertTrue(#combo > 0, "realistic Gather + Kill spots exist")
+    check(combo, "combo")
+    ns.settings.comboKill = "all"
+    -- the setting drives the default, and the empty state explains what was hidden
+    SlashCmdList.FORAGER("realistic on")
+    assertTrue(ns.settings.realistic == true, "/forage realistic on")
+    ns.Finder:Run({ goal = "ore", perZone = 1 })
+    assertTrue(ns.Finder.last.opts.realistic == true, "setting on -> realistic search")
+    assertTrue(ns.Risk.HiddenText({ n = 3, reasons = { ["mobs up to X levels above you"] = 2, elites = 1 } })
+        == "Realistic spots hid 3 spots: mobs too high for you (2), elites (1).", "hidden text")
+    if not ns.Main.frame then ns.Main:Toggle() end
+    ns.Main:SelectTabByKey("farm")
+    ns.Main:SelectTabByKey("combo")
+    ns.settings.realistic = false
+    ns.settings.ruleset = savedRs
+    M.level, M.skills = savedLevel, savedSkills
+    ns.Player:RefreshSkills()
+end)
+
 test("secret loot values are ignored without errors", function()
     M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-6", 2575)
     M.loot = { { link = M.secret, qty = M.secret, sources = { M.secret, 1 } } }

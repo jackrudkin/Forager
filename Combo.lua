@@ -262,11 +262,19 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     local skills, level, loc = opts.skills, opts.level, opts.location
     local lootSkills = {}
     for k, v in pairs(skills) do if k ~= "skin" then lootSkills[k] = v end end
+    -- Realistic: skip ground near mobs that are too hard (orange/red/elite) or enemy settlements
+    local unsafe = opts.realistic and ns.Risk:UnsafeCells(uiMap, GRID, level) or nil
+    local function safe(x, y)
+        if not unsafe then return true end
+        local cx = math.min(GRID - 1, math.max(0, math.floor(x * GRID)))
+        local cy = math.min(GRID - 1, math.max(0, math.floor(y * GRID)))
+        return not unsafe[cy * GRID + cx]
+    end
     -- nodes you can gather, valued per visit
     local nodes, minSkill = {}, nil
     for _, pt in ipairs(DS:GetZoneNodes(uiMap)) do
         local t = DS:GetType(pt.t)
-        if t and kinds[t.kind] and allowed(loc, uiMap, pt.x, pt.y) then
+        if t and kinds[t.kind] and safe(pt.x, pt.y) and allowed(loc, uiMap, pt.x, pt.y) then
             local have = skills[t.kind]
             local col = have and ns.NodeSkillColor(t, have)
             if col and col ~= "red" then
@@ -286,14 +294,14 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     local info, mobs = {}, {}
     for npc, flat in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npc)
-        if m and not DS:IsFriendly(m) then
+        if m and not DS:IsFriendly(m) and not (opts.realistic and ns.Risk.TooHard(m, level)) then
             local lf = ns.Finder.LevelFactor(m, level, ns.settings.showDangerous)
             if lf > 0 then
                 local inf = mobInfo(m, lf, ctx, skills, lootSkills, level)
                 if inf then
                     info[npc] = inf
                     for i = 1, #flat, 2 do
-                        if allowed(loc, uiMap, flat[i], flat[i + 1]) then
+                        if safe(flat[i], flat[i + 1]) and allowed(loc, uiMap, flat[i], flat[i + 1]) then
                             mobs[#mobs + 1] = { x = flat[i], y = flat[i + 1], npc = npc }
                         end
                     end
@@ -359,6 +367,15 @@ local function evalZone(uiMap, gather, opts, ctx, out)
             end
             if best then
                 best.rect = { x1, y1, x2, y2 }
+                if opts.realistic then
+                    -- assess risk on the ground the loop actually covers
+                    local bx1, by1, bx2, by2 = 1, 1, 0, 0
+                    for _, p in ipairs(best.route and best.route.points or an) do
+                        bx1, by1 = math.min(bx1, p.x), math.min(by1, p.y)
+                        bx2, by2 = math.max(bx2, p.x), math.max(by2, p.y)
+                    end
+                    if bx2 > bx1 then best.rect = { math.max(x1, bx1 - 0.015), math.max(y1, by1 - 0.015), math.min(x2, bx2 + 0.015), math.min(y2, by2 + 0.015) } end
+                end
                 best.cell = c
                 best.nodesOnlyRate = simA.nodesOnlyRate
                 best.areaMobs = am
@@ -367,12 +384,22 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         end
     end
     table.sort(evaluated, function(a, b) return a.perHour > b.perHour end)
-    -- keep up to 2 non-overlapping areas per zone
+    -- keep up to 2 non-overlapping areas per zone (Realistic: only areas that pass the check)
     local kept = {}
     for _, e in ipairs(evaluated) do
         local overlap = false
         for _, k in ipairs(kept) do
             if not (e.cell[1] + W <= k.cell[1] or k.cell[1] + W <= e.cell[1] or e.cell[2] + W <= k.cell[2] or k.cell[2] + W <= e.cell[2]) then overlap = true end
+        end
+        if not overlap and opts.realistic then
+            local probe = { uiMap = uiMap, rect = e.rect, points = e.nodeOn }
+            ns.Finder.NameArea(probe)
+            ns.Risk:Assess(probe)
+            local ok, why = ns.Risk:RealisticCheck(probe)
+            if not ok then
+                overlap = true
+                ns.Risk.AddHidden(ctx.hidden, why)
+            end
         end
         if not overlap then kept[#kept + 1] = e end
         if #kept >= (opts.perZone or 2) then break end
@@ -452,6 +479,7 @@ function Combo:Run(opts)
     local assumedSkin = false
     if killFor == "skin" and not opts.skills.skin then opts.skills.skin, assumedSkin = 300, true end
     if opts.includeEnemy == nil then opts.includeEnemy = s.includeEnemy end
+    if opts.realistic == nil then opts.realistic = s.realistic and true or false end
     if not opts.zones and ns.Quests:IsActive() then
         local z1, z2 = ns.Quests:Zones()
         opts.zones = { z1, z2 }
@@ -463,6 +491,7 @@ function Combo:Run(opts)
         speed = P:Speed(), active = s.activeFraction,
         killSec = s.comboKillSeconds, skinSec = skinSec, skinMeasured = skinSrc == "me", pull = s.comboPullYards,
         respawn = math.max(30, s.comboRespawn), mode = opts.mode or Combo:Mode(), killFor = killFor, assumedSkin = assumedSkin,
+        hidden = opts.realistic and { n = 0, reasons = {} } or nil,
     }
     local out = {}
     for _, uiMap in ipairs(ns.Finder.ZoneCandidates(opts)) do
@@ -471,6 +500,8 @@ function Combo:Run(opts)
     end
     table.sort(out, function(a, b) return a.perHour > b.perHour end)
     out = ns.Risk:Filter(out)
-    Combo.last = { opts = opts, results = out, gather = gather, mode = ctx.mode, killFor = killFor, time = time() }
+    local hidden = ctx.hidden
+    if opts.realistic then out, hidden = ns.Risk:Realistic(out, hidden) end
+    Combo.last = { opts = opts, results = out, gather = gather, mode = ctx.mode, killFor = killFor, time = time(), hidden = hidden }
     return out
 end
