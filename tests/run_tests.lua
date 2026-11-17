@@ -391,6 +391,55 @@ test("realistic spots: no orange/red/elite mobs, risk under the caps, still find
     ns.Player:RefreshSkills()
 end)
 
+test("item tooltips: game tooltip + Forager price on every item the window shows", function()
+    local function reset() M.tooltipLines, M.tooltipItem = {}, nil end
+    local function has(text) for _, l in ipairs(M.tooltipLines) do if l:find(text, 1, true) then return true end end end
+    -- helper: the game's tooltip, then Forager's price and the extra lines
+    reset()
+    ns.UI.ItemTip(UIParent, 2770, { { "Per hour here", "12.0" } })
+    assertTrue(M.tooltipItem == 2770 and has("Per hour here"), "SetItemByID + extra lines")
+    assertTrue(has("Forager price"), "Forager price line")
+    -- non-items get a plain tooltip
+    local id, extra = ns.UI.LootTipInfo({ id = 2770, perHour = 12, value = 3000 })
+    assertTrue(id == 2770 and extra[1][1] == "Per hour here", "loot entry -> item")
+    assertTrue(type(ns.UI.LootTipInfo({ coin = true, value = 500 })) == "table", "coin -> plain tooltip")
+    assertTrue(type(ns.UI.LootTipInfo({ greens = 2, perHour = 1, value = 900 })) == "table", "greens -> plain tooltip")
+    -- every hover area that holds an item in the open window shows that item's tooltip
+    local function hoverAll(field)
+        local n = 0
+        for _, f in ipairs(M.allFrames) do
+            local v = f[field]
+            if v and f._shown and f._scripts.OnEnter then
+                local want = v.id
+                reset()
+                f._scripts.OnEnter(f)
+                if want then
+                    assertTrue(M.tooltipItem == want, field .. " hover shows item " .. tostring(want))
+                    n = n + 1
+                else
+                    assertTrue(#M.tooltipLines > 0, field .. " hover shows a plain tooltip")
+                end
+            end
+        end
+        return n
+    end
+    if not ns.Main.frame then ns.Main:Toggle() end
+    ns.char.goal = "ore"
+    ns.Main:SelectTabByKey("farm")
+    local cards, rows = hoverAll("loot"), hoverAll("it")
+    ns.Main:SelectTabByKey("combo")
+    local slots = hoverAll("it")
+    print(string.format("    farm card icons %d, farm/combo loot rows %d + %d", cards, rows, slots))
+    assertTrue(cards > 0 and rows > 0, "farm cards and rows show item tooltips")
+    -- the item suggestions list shows item tooltips too
+    reset()
+    ns.UI.OpenList(UIParent, { { text = "Copper Ore", value = {}, itemID = 2770 } }, function() end, 200)
+    local popup = _G.ForagerDropdownPopup
+    popup.buttons[1]._scripts.OnEnter(popup.buttons[1])
+    assertTrue(M.tooltipItem == 2770, "suggestion hover")
+    ns.UI.CloseList()
+end)
+
 test("secret loot values are ignored without errors", function()
     M.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-6", 2575)
     M.loot = { { link = M.secret, qty = M.secret, sources = { M.secret, 1 } } }

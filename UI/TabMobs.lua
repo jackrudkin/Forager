@@ -47,7 +47,7 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
         if #text >= 3 then
             local items = {}
             for _, s in ipairs(ns.Finder:Suggest(text, 10)) do
-                if s.kind == "item" then items[#items + 1] = { text = s.text, value = s, icon = s.icon } end
+                if s.kind == "item" then items[#items + 1] = { text = s.text, value = s, icon = s.icon, itemID = s.id } end
             end
             if #items > 0 then
                 UI.OpenList(search, items, function(v)
@@ -120,6 +120,7 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
     d.sub = UI.Muted(d, "")
     d.sub:SetPoint("LEFT", d.title, "RIGHT", 10, 0)
     d.drops = {}
+    d.dropHover = {}
     for i = 1, 8 do
         local col, row = (i - 1) % 4, math.floor((i - 1) / 4)
         local fs = UI.Label(d, "", "GameFontHighlightSmall")
@@ -127,6 +128,20 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
         fs:SetWidth(190)
         fs:SetWordWrap(false)
         d.drops[i] = fs
+        local h = UI.ItemHover(d, function(self)
+            local p = self.part
+            if not p then return nil end
+            if p.coin then return { title = "Coin", lines = { { "Per kill", ns.Money(p.value, true) } } } end
+            if p.greens then
+                return { title = p.greens == 3 and "|cff0070ddBlue gear|r" or "|cff1eff00Green gear|r",
+                    lines = { "Valued at what disenchanting it gives.", { "Chance per kill", ns.Pct(p.p) }, { "Value per kill", ns.Money(p.value, true) } } }
+            end
+            return p.id, { { "Drop chance", ns.Pct(p.p) }, { "Value per kill", ns.Money(p.value, true) } }
+        end)
+        h:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 2)
+        h:SetSize(190, 16)
+        h:Hide()
+        d.dropHover[i] = h
     end
     d.farm = UI.Button(d, "Farm this mob", 130, function()
         if not selected then return end
@@ -150,6 +165,7 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
         d.hint:SetShown(not on)
         d.title:SetShown(on) d.sub:SetShown(on) d.farm:SetShown(on) d.map:SetShown(on)
         for _, fs in ipairs(d.drops) do fs:SetText("") end
+        for _, h in ipairs(d.dropHover) do h.part = nil h:Hide() end
         if not r then return end
         d.title:SetText(string.format("%s |cff9d9d9d(%d-%d)|r", r.m.name, r.m.minLevel, r.m.maxLevel))
         d.sub:SetText(string.format("%s  ·  %s/kill  ·  %d spawns%s", ns.Player:ZoneName(r.zone), ns.Money(r.value, true), r.spawns,
@@ -166,6 +182,8 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
             elseif p.greens then icon, label = "Interface\\Icons\\INV_Enchant_DustStrange", p.greens == 3 and "|cff0070ddBlue gear|r" or "|cff1eff00Green gear|r"
             else icon, label = itemIcon(p.id), DS:ColoredItem(p.id) end
             d.drops[i]:SetText(string.format("|T%s:14|t %s |cff9d9d9d%s · %s|r", icon, label, p.coin and "" or ns.Pct(p.p), ns.Money(p.value, true)))
+            d.dropHover[i].part = p
+            d.dropHover[i]:Show()
         end
         if i == 0 then d.drops[1]:SetText("|cff9d9d9dNo priced drops (try Auctionator/AuctionTrends price data).|r") end
     end

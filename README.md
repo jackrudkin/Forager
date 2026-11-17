@@ -4,6 +4,20 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 1.9: item tooltips
+
+Hover any item in the Forager window to see the game's own item tooltip. Below it, Forager adds the price it uses (and where that price comes from) and what the item is worth in that spot.
+
+| Where | Extra lines |
+|---|---|
+| Farm: loot icons on result cards, **Per hour** rows in the detail panel | Per hour here, value per hour |
+| Gather + Kill: **Loot per hour** icons | Per hour here, value per hour |
+| Mobs & Drops: a mob's drops in the detail panel | Drop chance, value per kill |
+| Stats: items gathered/looted | All-time count, this session, worth now |
+| Search suggestions (Farm and Mobs & Drops) and the selected item chip | Forager price |
+
+Coin and "Green/Blue gear (DE)" entries show a short explanation instead, because they aren't single items. Price addons that add lines to item tooltips (Auctionator, TSM) show their lines as usual.
+
 ## What's new in 1.8: Realistic spots
 
 Tick **Realistic spots** in the Farm or Gather + Kill tab (or type `/forage realistic`) to see only spots you can farm solo at your level. The two tabs share the setting, and it's remembered.
@@ -337,7 +351,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 41 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 42 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -347,7 +361,8 @@ Not changed, because no better data was found: node spawn positions (Forever red
   - Gather + Kill skinning: skins only within your skill, skin-only mode, no skins without Skinning, skin time never helps, skill-ups split and best-ratio property, both modes render;
   - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI;
   - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade;
-  - Realistic spots (1.8): orange/elite mobs excluded, every kept spot passes the rules (Farm ore/skinning/gold, Gather + Kill, PvP ruleset), spots still found at level 25, setting, slash command, UI.
+  - Realistic spots (1.8): orange/elite mobs excluded, every kept spot passes the rules (Farm ore/skinning/gold, Gather + Kill, PvP ruleset), spots still found at level 25, setting, slash command, UI;
+  - item tooltips (1.9): game tooltip + Forager price, loot/coin/gear entries, every item hover area in Farm and Gather + Kill, search suggestions.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
@@ -386,6 +401,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 | Template `UICheckButtonTemplate`, `BackdropTemplate` | UI | Checkboxes / panel backgrounds missing (cosmetic) |
 | Textures `Interface\Minimap\MinimapArrow`, `Interface\Common\Indicator-Gray`, `Interface\Common\UI-Searchbox-Icon`, `Interface\FriendsFrame\ClearBroadcastIcon` | HUD arrow, preview dots, search, close | Blank texture (cosmetic) |
 | `C_Item.GetItemIconByID` for Forever-only items | Item icons in the window | Question-mark icon |
+| `GameTooltip:SetItemByID`, `Frame:SetMouseClickEnabled` | Item tooltips on hover; clicks pass through icons to the card | Name-only tooltip with Forager's price; clicks are handed to the card |
 | `UNIT_SPELLCAST_START` / `SUCCEEDED` / `INTERRUPTED` for gather spells | Measured cast times | Classic cast times stay in use |
 | `TSM_API.GetCustomPriceValue` on Forever | TSM price source | Skipped; the next price source is used |
 

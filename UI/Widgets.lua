@@ -345,6 +345,8 @@ local function getPopup()
                 b.text:SetPoint("RIGHT", -4, 0)
                 b.text:SetText(it.text)
                 b:SetScript("OnClick", function() self:Hide() self.onSelect(it.value, it) end)
+                b:SetScript("OnEnter", function(btn) if it.itemID then UI.ItemTip(btn, it.itemID) end end)
+                b:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 b:Show()
             elseif b then
                 b:Hide()
@@ -747,4 +749,60 @@ function UI.Tip(owner, title, lines)
         else GameTooltip:AddLine(l, 0.85, 0.85, 0.85, true) end
     end
     GameTooltip:Show()
+end
+
+-------------------------------------------------------------------------------
+-- item tooltips
+-------------------------------------------------------------------------------
+--- The game's own tooltip for an item (GameTooltip:SetItemByID), followed by the price Forager
+--- uses and any extra lines ({ left, right } pairs) for where it was hovered.
+function UI.ItemTip(owner, itemID, extra, anchor)
+    if not owner or not itemID then return end
+    GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+    local ok = GameTooltip.SetItemByID and pcall(GameTooltip.SetItemByID, GameTooltip, itemID)
+    if not ok or (GameTooltip.NumLines and GameTooltip:NumLines() == 0) then
+        GameTooltip:AddLine(ns.DS:ColoredItem(itemID) or ("Item " .. itemID), 1, 1, 1)
+    end
+    local price, src = ns.Prices:Get(itemID)
+    if price and price > 0 then
+        GameTooltip:AddDoubleLine("Forager price", ns.Money(price, true) .. " |cff9d9d9d(" .. tostring(src) .. ")|r", 0.5, 0.8, 1, 1, 1, 1)
+    end
+    for _, l in ipairs(extra or {}) do GameTooltip:AddDoubleLine(l[1], l[2] or "", 0.5, 0.8, 1, 1, 1, 1) end
+    GameTooltip:Show()
+end
+
+--- An invisible hover area that shows an item tooltip. getInfo(self) returns itemID, extra lines;
+--- or a table { title =, lines = } for things that aren't items (coin, gear for disenchanting);
+--- or nil for no tooltip. Clicks pass through to the frame underneath.
+function UI.ItemHover(parent, getInfo)
+    local f = CreateFrame("Frame", nil, parent)
+    f:EnableMouse(true)
+    if f.SetMouseClickEnabled then f:SetMouseClickEnabled(false) end
+    f:SetScript("OnEnter", function(self)
+        local id, extra = getInfo(self)
+        if type(id) == "table" then UI.Tip(self, id.title, id.lines)
+        elseif id then UI.ItemTip(self, id, extra) end
+    end)
+    f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- clients without SetMouseClickEnabled: hand the click to the parent
+    f:SetScript("OnMouseUp", function(_, btn)
+        local click = parent.GetScript and parent:GetScript("OnClick")
+        if click then click(parent, btn) end
+    end)
+    return f
+end
+
+--- Tooltip info for a loot entry of a result ({ id } or { coin } or { greens }), with per-hour lines.
+function UI.LootTipInfo(it)
+    if not it then return nil end
+    local lines = {}
+    if it.perHour and not it.coin then lines[#lines + 1] = { "Per hour here", string.format("%.1f", it.perHour) } end
+    if it.value and it.value > 0 then lines[#lines + 1] = { "Value per hour", ns.Money(it.value, true) } end
+    if it.coin then return { title = "Coin", lines = { { "Per hour here", ns.Money(it.value or 0, true) } } } end
+    if it.greens then
+        local t = { "Valued at what disenchanting it gives (Classic armour splits by item level)." }
+        for _, l in ipairs(lines) do t[#t + 1] = l end
+        return { title = it.greens == 3 and "|cff0070ddBlue gear|r" or "|cff1eff00Green gear|r", lines = t }
+    end
+    return it.id, lines
 end

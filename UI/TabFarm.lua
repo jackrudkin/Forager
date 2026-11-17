@@ -62,7 +62,8 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         local items = {}
         for _, s in ipairs(Finder:Suggest(text, 14)) do
             local tag = s.kind == "goal" and "|cff7fd36bcategory|r  " or (s.kind == "mob" and "|cff9d9d9dmob|r  " or "")
-            items[#items + 1] = { text = tag .. s.text, value = s, icon = s.icon or (s.kind == "mob" and "Interface\\Icons\\Ability_Hunter_Pet_Wolf") }
+            items[#items + 1] = { text = tag .. s.text, value = s, icon = s.icon or (s.kind == "mob" and "Interface\\Icons\\Ability_Hunter_Pet_Wolf"),
+                itemID = s.kind == "item" and s.id or nil }
         end
         state.suggest = items
         UI.OpenList(search, items, function(v) applySuggestion(v) end, 430)
@@ -87,6 +88,11 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     chipArea:SetSize(CW, 54)
     local chips = {}
     local itemChip = UI.Chip(chipArea, "item", "Interface\\Icons\\INV_Misc_QuestionMark", function() end)
+    itemChip:HookScript("OnEnter", function(self)
+        local gi = Finder:GoalInfo(Main:Goal())
+        if gi.kind == "item" and gi.item then UI.ItemTip(self, gi.item, { { "Click", "stop farming this item" } }) end
+    end)
+    itemChip:HookScript("OnLeave", function() GameTooltip:Hide() end)
     for _, g in ipairs(ns.Goals) do
         local c = UI.Chip(chipArea, g.short, g.icon, function()
             ns.char.goal = g.key
@@ -170,13 +176,16 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         c.rate:SetJustifyH("RIGHT")
         c.badge = UI.Label(c, "", "GameFontNormalSmall")
         c.badge:SetPoint("TOPRIGHT", c.rate, "BOTTOMRIGHT", 0, -3)
-        c.icons = {}
+        c.icons, c.iconHover = {}, {}
         for i = 1, 5 do
             local t = c:CreateTexture(nil, "ARTWORK")
             t:SetSize(18, 18)
             t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             t:SetPoint("BOTTOMLEFT", 32 + (i - 1) * 22, 7)
             c.icons[i] = t
+            local h = UI.ItemHover(c, function(self) return UI.LootTipInfo(self.loot) end)
+            h:SetAllPoints(t)
+            c.iconHover[i] = h
         end
         c.more = UI.Muted(c, "")
         c.more:SetPoint("BOTTOMLEFT", 32 + 5 * 22, 9)
@@ -196,8 +205,10 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
             n = i
             c.icons[i]:SetTexture((lootLabel(it)))
             c.icons[i]:Show()
+            c.iconHover[i].loot = it
+            c.iconHover[i]:Show()
         end
-        for i = n + 1, 5 do c.icons[i]:Hide() end
+        for i = n + 1, 5 do c.icons[i]:Hide() c.iconHover[i]:Hide() end
         c.more:SetText(#(r.items or {}) > 5 and ("+" .. (#r.items - 5)) or "")
     end, function(r) panel:Select(r) end)
     list:SetPoint("TOPLEFT", 0, listTop)
@@ -252,6 +263,8 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         row.val = UI.Label(row, "", "GameFontHighlightSmall")
         row.val:SetPoint("RIGHT")
         row.val:SetJustifyH("RIGHT")
+        row.hover = UI.ItemHover(row, function() return UI.LootTipInfo(row.it) end)
+        row.hover:SetAllPoints(row)
         d.loot[i] = row
     end
 
@@ -328,6 +341,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
             local it = r.items and r.items[i]
             if it then
                 local icon, label = lootLabel(it)
+                row.it = it
                 row.icon:SetTexture(icon)
                 row.name:SetText(label)
                 row.qty:SetText(it.coin and "" or string.format("%.1f", it.perHour))

@@ -245,11 +245,26 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     skip:SetPoint("TOPLEFT", worth, "BOTTOMLEFT", 0, -5)
     skip:SetPoint("RIGHT", -12, 0)
     skip:SetJustifyV("TOP")
-    local lootLine = UI.Label(d, "", "GameFontHighlightSmall")
+    -- loot per hour: icons with counts; hover one for the item's tooltip
+    local lootLine = CreateFrame("Frame", nil, d)
     lootLine:SetPoint("TOPLEFT", skip, "BOTTOMLEFT", 0, -6)
     lootLine:SetPoint("RIGHT", -12, 0)
-    lootLine:SetJustifyV("TOP")
-    lootLine:SetSpacing(3)
+    lootLine:SetHeight(18)
+    lootLine.label = UI.Label(lootLine, "|cff7fd36bLoot per hour|r", "GameFontHighlightSmall")
+    lootLine.label:SetPoint("LEFT", 0, 0)
+    lootLine.slots = {}
+    for i = 1, 8 do
+        local slot = UI.ItemHover(lootLine, function(self) return UI.LootTipInfo(self.it) end)
+        slot:SetSize(58, 18)
+        slot:SetPoint("LEFT", lootLine.label, "RIGHT", 10 + (i - 1) * 60, 0)
+        slot.icon = slot:CreateTexture(nil, "ARTWORK")
+        slot.icon:SetSize(16, 16)
+        slot.icon:SetPoint("LEFT", 0, 0)
+        slot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        slot.count = UI.Label(slot, "", "GameFontHighlightSmall")
+        slot.count:SetPoint("LEFT", slot.icon, "RIGHT", 3, 0)
+        lootLine.slots[i] = slot
+    end
 
     d.start = UI.Button(d, "Start farming here", 170, function()
         local r = state.selected
@@ -365,12 +380,19 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
             sk[#sk + 1] = m.m.name
         end
         skip:SetText(#sk > 0 and ("Skip (less than gathering time is worth): " .. table.concat(sk, ", ")) or "")
-        local lt = {}
-        for i, it in ipairs(r.items or {}) do
-            if i > 8 then break end
-            lt[#lt + 1] = string.format("|T%s:16|t %s", lootIcon(it), it.coin and money(it.value) or string.format("%.0f", it.perHour))
+        local items = r.items or {}
+        for i, slot in ipairs(lootLine.slots) do
+            local it = items[i]
+            slot.it = it
+            if it then
+                slot.icon:SetTexture(lootIcon(it))
+                slot.count:SetText(it.coin and money(it.value) or string.format("%.0f", it.perHour))
+                slot:Show()
+            else
+                slot:Hide()
+            end
         end
-        lootLine:SetText(#lt > 0 and ("|cff7fd36bLoot per hour|r   " .. table.concat(lt, "   ")) or "")
+        lootLine.label:SetShown(#items > 0)
         local farming = ns.Route.active and ns.Route.active.result == r
         d.start:SetText(farming and "Stop farming" or "Start farming here")
     end

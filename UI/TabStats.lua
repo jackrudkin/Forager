@@ -18,7 +18,12 @@ Main:RegisterTab("stats", "Stats", "Interface\\Icons\\INV_Misc_Coin_02", functio
         { key = "s", label = "Session", width = 56, align = "RIGHT", get = function(r) return r.s > 0 and r.s or "-" end, sort = function(r) return r.s end },
         { key = "v", label = "Value", width = 74, align = "RIGHT", get = function(r) return ns.Money(r.v, true) end, sort = function(r) return r.v end },
     }
-    local items = UI.Table(panel, itemCols, 15)
+    local items = UI.Table(panel, itemCols, 15, nil, function(owner, r)
+        local lines = { { "Gathered/looted (all time)", tostring(r.n) } }
+        if (r.s or 0) > 0 then lines[#lines + 1] = { "This session", tostring(r.s) } end
+        if (r.v or 0) > 0 then lines[#lines + 1] = { "Worth now", ns.Money(r.v, true) } end
+        UI.ItemTip(owner, r.id, lines)
+    end)
     items:SetPoint("TOPLEFT", 0, -100)
     items.sortKey = "v"
 

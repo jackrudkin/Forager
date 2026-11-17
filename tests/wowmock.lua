@@ -76,6 +76,8 @@ function frameMethods:GetCanvas() self._canvas = self._canvas or newObj("Frame",
 function frameMethods:GetCanvasScale() return 1 end
 function frameMethods:GetUnit() return "Ornery Plainstrider", "mouseover" end
 function frameMethods:AddLine(t) table.insert(M.tooltipLines, tostring(t)) end
+function frameMethods:SetItemByID(id) M.tooltipItem = id table.insert(M.tooltipLines, "item:" .. tostring(id)) end
+function frameMethods:NumLines() return #M.tooltipLines end
 function frameMethods:AddDoubleLine(a, b) table.insert(M.tooltipLines, tostring(a) .. " || " .. tostring(b)) end
 function frameMethods:AddMessage(msg) table.insert(M.printed, msg) if M.verbose then print("[chat] " .. msg) end end
 function frameMethods:StartMoving() end
@@ -92,6 +94,8 @@ function M.CreateFrame(kind, name, parent, template)
     if template and M.failTemplates and M.failTemplates[template] then error("template " .. template) end
     local f = newObj(kind or "Frame", parent)
     f._name = name
+    M.allFrames = M.allFrames or {}
+    M.allFrames[#M.allFrames + 1] = f
     if name then _G[name] = f end
     if kind == "Slider" then f._value = 0 end
     if template == "ButtonFrameTemplate" then f.TitleText = newObj("FontString", f) end
