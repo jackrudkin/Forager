@@ -284,7 +284,7 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     local info, mobs = {}, {}
     for npc, flat in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npc)
-        if m then
+        if m and not DS:IsFriendly(m) then
             local lf = ns.Finder.LevelFactor(m, level, ns.settings.showDangerous)
             if lf > 0 then
                 local inf = mobInfo(m, lf, ctx, skills, lootSkills, level)
@@ -422,6 +422,7 @@ local function evalZone(uiMap, gather, opts, ctx, out)
             #sim.nodeOn, #sim.mobOn)
         r.risk, r.riskLevel = ns.Finder.RiskFor(zone, opts.faction)
         ns.Finder.NameArea(r)
+        ns.Risk:Assess(r)
         out[#out + 1] = r
     end
 end
@@ -462,6 +463,7 @@ function Combo:Run(opts)
         if not ok then ns:Debug("combo " .. uiMap .. ": " .. tostring(err)) end
     end
     table.sort(out, function(a, b) return a.perHour > b.perHour end)
+    out = ns.Risk:Filter(out)
     Combo.last = { opts = opts, results = out, gather = gather, mode = ctx.mode, killFor = killFor, time = time() }
     return out
 end

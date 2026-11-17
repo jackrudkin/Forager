@@ -15,6 +15,8 @@ local DEFAULT_SETTINGS = {
     tomtom = false,              -- also add a TomTom waypoint when starting (if installed)
     hud = true,                  -- route HUD with arrow
     includeEnemy = false,        -- rank enemy-faction zones too
+    ruleset = "auto",            -- auto | pvp | normal (gank risk only on PvP)
+    maxRisk = "any",             -- hide spots at/above: any | high | medium | low
     comboGather = "auto",        -- Gather + Kill: auto | ore | herb | both
     comboMode = "gold",          -- gold | skill (gathering + skinning skill-ups)
     comboKill = "all",           -- all | skin (only mobs you can skin)
@@ -55,6 +57,7 @@ local function defaults()
         fish = {},       -- [uiMap] = { casts = n, items = {[itemID] = n} } open-water catches
         caves = {},      -- [uiMap][cellKey] = { n = subzone name, c = samples } learned cave footprint (1% cells)
         caveMobs = {},   -- [npcID] = { m = uiMap, n = cave name, c = sightings }
+        deaths = {},     -- [uiMap][cellKey] = count (2% cells) your deaths, for the risk estimate
         names = {},      -- learned node type names for unknown types: ["i<itemID>"] = name
         stats = { items = {}, gathers = {}, kills = 0, skins = 0, zones = {}, gold = 0 },
         sessions = {},   -- recent sessions summary

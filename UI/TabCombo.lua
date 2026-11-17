@@ -145,7 +145,7 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
         if g then bits[#bits + 1] = g >= 0 and string.format("|cff7fd36b+%d%%|r vs one alone", g) or "|cffff8040one alone is better|r" end
         if r.cave then bits[#bits + 1] = "|cff9e7af2CAVE|r" end
         if ns.Route.active and ns.Route.active.result == r then bits[#bits + 1] = "|cff7fd36bFARMING|r" end
-        bits[#bits + 1] = (RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r"
+        bits[#bits + 1] = r.danger and ns.Risk:Short(r) or ((RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r")
         c.sub:SetText(table.concat(bits, "  ·  "))
     end, function(r) panel:Select(r) end)
     list:SetPoint("TOPLEFT", 0, TOP)
@@ -168,6 +168,10 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     d.rate = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     d.rate:SetPoint("TOPRIGHT", -12, -10)
     d.rate:SetTextColor(T.gold[1], T.gold[2], T.gold[3])
+    local subHover = CreateFrame("Button", nil, d)
+    subHover:SetAllPoints(d.sub)
+    subHover:SetScript("OnEnter", function(self) if state.selected then ns.Risk:Tooltip(self, state.selected) end end)
+    subHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local preview = UI.MapPreview(d, 210, 140)
     preview:SetPoint("TOPLEFT", 12, -50)
@@ -290,7 +294,8 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
         if r.minLevel then sub[#sub + 1] = string.format("Mobs %d-%d", r.minLevel, r.maxLevel) end
         if r.minSkill then sub[#sub + 1] = "nodes from skill " .. r.minSkill end
         if r.minSkin then sub[#sub + 1] = "skins from " .. r.minSkin end
-        sub[#sub + 1] = (RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r"
+        sub[#sub + 1] = r.danger and (ns.Risk:Short(r) .. " |cff9d9d9d(" .. (r.risk or "") .. ", hover)|r")
+            or ((RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r")
         sub[#sub + 1] = r.confidence
         d.sub:SetText(table.concat(sub, "  ·  "))
         d.rate:SetText(rateText(r))

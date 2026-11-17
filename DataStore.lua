@@ -142,6 +142,11 @@ local function parseList(s)
 end
 
 --- Decoded bundled mob record (Classic-era loot estimates) or nil.
+--- Is this creature friendly to your faction (guards, villagers, vendors)? Those are never farm targets.
+function DS:IsFriendly(m)
+    return m and m.friendly ~= nil and m.friendly == ns.Player:Faction()
+end
+
 function DS:GetMob(npcID)
     if not npcID then return nil end
     local m = mobCache[npcID]
@@ -154,6 +159,7 @@ function DS:GetMob(npcID)
         ctype = tonumber(f[4]) or 10, rank = tonumber(f[5]) or 0,
         skinnable = f[6] ~= nil and f[6] ~= "", skin = parseList(f[6]), farm = parseList(f[7]),
         pickpocket = parseList(f[9]), copper = tonumber(f[10]) or 0,
+        friendly = (f[11] == "A" or f[11] == "H") and f[11] or nil,
     }
     if f[8] and f[8] ~= "" then
         local g, b, e, il = strsplit(",", f[8])

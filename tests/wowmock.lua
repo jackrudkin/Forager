@@ -264,6 +264,8 @@ function M.Install(env)
     G.GetSubZoneText = function() return M.subzone or "" end
     G.UnitCanAttack = function() return true end
     G.GetBuildInfo = function() return "1.60.1", "70999", "Nov 1 2026", 16001 end
+    G.GetZonePVPInfo = function() return M.zonePvp end
+    G.UnitIsPVP = function() return M.pvpFlag end
     G.OpenWorldMap = function(id) M.openedMap = id G.WorldMapFrame._shown = true M.worldMapID = id end
 end
 

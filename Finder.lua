@@ -278,6 +278,7 @@ function Finder:MobResult(npcID, uiMap)
     r.loopSec = r.route.length / P:Speed()
     r.risk, r.riskLevel = riskFor(zone, P:Faction())
     nameArea(r)
+    ns.Risk:Assess(r)
     return r
 end
 
@@ -398,7 +399,7 @@ local function evalMobs(uiMap, goal, opts, out)
     local skillMode = opts.mode == "skill" and (needsSkill or goal.key == "lockbox") and not itemID
     for npcID, pts in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npcID)
-        if m then
+        if m and not DS:IsFriendly(m) then
             local lf = levelFactor(m, opts.level, s.showDangerous or opts.anyLevel)
             local w
             if lf > 0 then
@@ -563,6 +564,7 @@ function Finder:Run(opts)
             r.zoneMin, r.zoneMax = zone.min, zone.max
             r.risk, r.riskLevel = riskFor(zone, opts.faction)
             nameArea(r)
+            ns.Risk:Assess(r)
         end
     end
     if opts.questing then Finder:ApplyQuesting(out, opts) end
@@ -571,6 +573,7 @@ function Finder:Run(opts)
         if byUnits then return (a.itemUnits or 0) > (b.itemUnits or 0) end
         return (a.score or a.perHour) > (b.score or b.perHour)
     end)
+    out = ns.Risk:Filter(out)
     Finder.last = { opts = opts, results = out, goal = goal, time = time(), byUnits = byUnits }
     ns:Fire("FORAGER_FINDER_UPDATED")
     return out

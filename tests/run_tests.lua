@@ -456,6 +456,64 @@ test("gather + kill with skinning: skins counted only when you can skin, skin-on
     for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("Gather %+ Kill error") and not tostring(l):find("UI error"), tostring(l)) end
 end)
 
+test("risk: gank by ruleset/zone/settlements, death, hyperspawn, deaths learned, filter", function()
+    -- ruleset detection: unflagged in a contested zone proves Normal
+    ns.db.ruleset, ns.db.rulesetPvpZones = nil, nil
+    local rs, guess = ns.Risk:Ruleset()
+    assertTrue(rs == "pvp" and guess, "unknown -> PvP assumed")
+    M.zonePvp, M.pvpFlag = "contested", true
+    M.mapID = 1434 ns.Risk:LearnRuleset()
+    M.mapID = 1424 ns.Risk:LearnRuleset()
+    assertTrue(ns.db.ruleset == "pvp", "flagged in two contested zones -> PvP")
+    M.pvpFlag = false
+    ns.Risk:LearnRuleset()
+    assertTrue(ns.db.ruleset == "normal", "unflagged in contested -> Normal")
+    M.zonePvp, M.pvpFlag = nil, nil
+    ns.db.ruleset = "pvp"
+    -- zones: friendly (Elwynn) vs contested (Stranglethorn, Horde camp nearby for an Alliance player)
+    local function at(uiMap, rect) local r = { uiMap = uiMap, rect = rect } ns.Risk:Assess(r) return r.danger end
+    local elwynn = at(1429, { 0.40, 0.60, 0.48, 0.70 })
+    local stvCamp = at(1434, { 0.29, 0.25, 0.35, 0.32 }) -- around Grom'gol
+    local stvFar = at(1434, { 0.60, 0.60, 0.66, 0.66 })
+    assertTrue(elwynn.gank <= 5 and elwynn.label == "Low", "own low-level zone: low risk")
+    assertTrue(stvCamp.gank > stvFar.gank and stvCamp.gank >= 70, "enemy flight path nearby raises gank risk")
+    assertTrue(#stvCamp.why.gank >= 2, "reasons given")
+    ns.settings.ruleset = "normal"
+    assertTrue(at(1434, { 0.29, 0.25, 0.35, 0.32 }).gank == 0, "Normal ruleset: no gank risk")
+    ns.settings.ruleset = "auto"
+    -- death: higher-level area for a level-12 character
+    local best = ns.Finder:Run({ goal = "gold", zones = { 1434 }, perZone = 1, anyLevel = true })[1]
+    assertTrue(best and best.danger.death >= 50, "mobs far above your level: " .. tostring(best and best.danger.death))
+    -- your deaths raise the death risk there
+    local before = at(1429, { 0.40, 0.60, 0.48, 0.70 }).death
+    M.mapID, M.pos = 1429, { 0.44, 0.65 }
+    M.Fire("PLAYER_DEAD")
+    M.Fire("PLAYER_DEAD")
+    local after = at(1429, { 0.40, 0.60, 0.48, 0.70 })
+    assertTrue(after.death >= before + 25, "two deaths logged")
+    -- every finder / combo result carries a risk; overall combines the parts
+    local res = ns.Finder:Run({ goal = "gold", perZone = 1, anyLevel = true })
+    for _, r in ipairs(res) do
+        local d = r.danger
+        assertTrue(d and d.score >= math.max(d.gank, d.death, d.hyper) - 1e-6 and d.score <= 100, "combined score")
+        assertTrue(ns.Risk:Short(r):find("Risk:"), "short text")
+    end
+    for _, r in ipairs(ns.Combo:Run({ gather = "ore", perZone = 1 })) do assertTrue(r.danger, "combo risk") end
+    -- filter
+    ns.settings.maxRisk = "low"
+    local low = ns.Finder:Run({ goal = "gold", perZone = 1, anyLevel = true })
+    for _, r in ipairs(low) do assertTrue(r.danger.score < 20, "only low risk") end
+    assertTrue(#low < #res, "filter removed riskier spots")
+    ns.settings.maxRisk = "any"
+    -- UI shows it without errors
+    ns.Main:Toggle("farm")
+    ns.Main:SelectTabByKey("combo")
+    ns.Main.frame:Hide()
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error") and not tostring(l):find("error"), tostring(l)) end
+    print(string.format("       risk: Elwynn %s (%.0f) · STV by Grom'gol %s (%.0f: gank %.0f, death %.0f, hyper %.0f)", elwynn.label, elwynn.score,
+        stvCamp.label, stvCamp.score, stvCamp.gank, stvCamp.death, stvCamp.hyper))
+end)
+
 test("settings migration to v4 (route only)", function()
     local savedDB, savedBackup = ForagerDB, ForagerBackupDB
     ForagerBackupDB = nil

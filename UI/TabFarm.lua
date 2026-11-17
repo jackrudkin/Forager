@@ -29,7 +29,8 @@ local function subFor(r)
     elseif r.source == "node" then bits[#bits + 1] = "Nodes from skill " .. (r.minSkill or 0)
     elseif r.source == "fish" then bits[#bits + 1] = "Fishing skill " .. (r.minSkill or 0) end
     if r.minSkill and r.source == "mob" then bits[#bits + 1] = "skin " .. r.minSkill end
-    bits[#bits + 1] = (RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r"
+    bits[#bits + 1] = r.danger and (ns.Risk:Short(r) .. " |cff9d9d9d(" .. (r.risk or "") .. ")|r")
+        or ((RISK_COLOR[r.riskLevel or 0] or "") .. (r.risk or "") .. "|r")
     if r.detourMin then bits[#bits + 1] = string.format("%d min detour", r.travelMin or 0) end
     return table.concat(bits, "  ·  ")
 end
@@ -261,6 +262,15 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     d.why = UI.Muted(d, "")
     d.why:SetPoint("BOTTOMLEFT", 12, 44)
     d.why:SetPoint("RIGHT", -12, 0)
+    d.risk = CreateFrame("Button", nil, d)
+    d.risk:SetPoint("BOTTOMLEFT", 12, 60)
+    d.risk:SetPoint("RIGHT", -12, 0)
+    d.risk:SetHeight(16)
+    d.risk.text = UI.Label(d.risk, "", "GameFontHighlightSmall")
+    d.risk.text:SetAllPoints()
+    d.risk.text:SetWordWrap(false)
+    d.risk:SetScript("OnEnter", function(self) if state.selected then ns.Risk:Tooltip(self, state.selected) end end)
+    d.risk:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     d.start = UI.Button(d, "Start farming here", 170, function()
         local r = state.selected
@@ -290,7 +300,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     d.empty:SetJustifyV("TOP")
     d.empty:SetSpacing(3)
 
-    local detailWidgets = { d.title, d.sub, d.rate, d.units, preview, legend, lootHdr, d.extraHdr, d.extra, d.why, d.start, d.showMap, d.pin }
+    local detailWidgets = { d.title, d.sub, d.rate, d.units, preview, legend, lootHdr, d.extraHdr, d.extra, d.why, d.risk, d.start, d.showMap, d.pin }
     local function showDetail(on)
         for _, w in ipairs(detailWidgets) do w:SetShown(on) end
         for _, r in ipairs(d.loot) do if not on then r:Hide() end end
@@ -353,6 +363,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         if r.poiCount and r.poiCount > 0 then lines[#lines + 1] = string.format("|cffffd100%d quest objective(s)|r inside this area", r.poiCount) end
         d.extra:SetText(table.concat(lines, "\n"))
         d.why:SetText(r.why or "")
+        d.risk.text:SetText(ns.Risk:Line(r) .. "  |cff9d9d9d(hover for why)|r")
         local farming = ns.Route.active and ns.Route.active.result == r
         d.start:SetText(farming and "Stop farming" or "Start farming here")
     end

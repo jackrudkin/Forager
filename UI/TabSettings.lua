@@ -39,6 +39,17 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     check(2, "TomTom arrow when starting", "tomtom")
     check(2, "Rank enemy-faction zones", "includeEnemy")
     check(2, "Include elites / high-level mobs", "showDangerous")
+    place(2, UI.Muted(panel, "Your ruleset (for gank risk)"), 16)
+    place(2, UI.Dropdown(panel, 220, function()
+        local learned = ns.db.ruleset
+        return { { text = "Auto" .. (learned and (" (detected: " .. (learned == "pvp" and "PvP" or "Normal") .. ")") or " (not detected yet: PvP assumed)"), value = "auto" },
+            { text = "PvP", value = "pvp" }, { text = "Normal (PvE)", value = "normal" } }
+    end, function() return S().ruleset end, function(v) S().ruleset = v ns:Fire("FORAGER_GOAL_CHANGED") end), 28)
+    place(2, UI.Muted(panel, "Hide spots with risk"), 16)
+    place(2, UI.Dropdown(panel, 220, function()
+        return { { text = "Show all", value = "any" }, { text = "Very high", value = "high" },
+            { text = "High or worse", value = "medium" }, { text = "Medium or worse (Low only)", value = "low" } }
+    end, function() return S().maxRisk end, function(v) S().maxRisk = v ns:Fire("FORAGER_GOAL_CHANGED") end), 28)
     ys[2] = ys[2] + 4
     place(2, UI.Header(panel, "Finder assumptions"), 22)
     slider(2, "Live share of spawn points", "activeFraction", 0.1, 0.8, 0.05, pct)

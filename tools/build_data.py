@@ -329,7 +329,8 @@ for sid, v in npc.items():
             pp = ','.join('%d:%s' % (it, fmt_pct(p)) for it, p in lst)
             used_items.update(it for it, _ in lst)
         gold = round(((c[9] or 0) + (c[10] or 0)) / 2)
-    mob_rows[nid] = '|'.join([name.replace('|', '/'), str(minl), str(maxl), str(ctype), str(rank), skin, farm, qstr, pp, str(gold)])
+    fr = v.get('13') if v.get('13') in ('A', 'H') else ''  # friendly to one faction (guards, villagers)
+    mob_rows[nid] = '|'.join([name.replace('|', '/'), str(minl), str(maxl), str(ctype), str(rank), skin, farm, qstr, pp, str(gold), fr])
     for m, pts in sp.items():
         mob_zone[m].append((nid, pts))
 
@@ -380,15 +381,58 @@ for a, u, c in re.findall(r'\[(\d+)\] = (\d+), -- (.*)', src):
     if CAVE_RE.search(name) and 'unused' not in name.lower() and not name.lower().startswith('not used'):
         caves[u].add(name)
 
+# faction settlements per zone: clusters of NPCs friendly to only one faction (towns, camps, flight paths).
+# Used for the gank-risk estimate (distance from a farm spot to the nearest enemy settlement).
+FP_FLAG = 8  # QuestieDB npcFlags FLIGHT_MASTER
+fac_pts = collections.defaultdict(list)  # (uiMap, faction) -> [(x, y, isFP)]
+for nid, v in npc.items():
+    fac = v.get('13')
+    if fac not in ('A', 'H'):
+        continue
+    fp = bool((v.get('15') or 0) & FP_FLAG)
+    for m, pts in spawns_by_map(v.get('7')).items():
+        for (x, y) in pts:
+            fac_pts[(m, fac)].append((x, y, fp))
+hubs = collections.defaultdict(list)
+for (m, fac), pts in fac_pts.items():
+    left = list(pts)
+    clusters = []
+    while left:
+        x0, y0, _ = left[0]
+        grp = [p for p in left if abs(p[0] - x0) <= 4 and abs(p[1] - y0) <= 4]
+        cx = sum(p[0] for p in grp) / len(grp)
+        cy = sum(p[1] for p in grp) / len(grp)
+        grp = [p for p in left if (p[0] - cx) ** 2 + (p[1] - cy) ** 2 <= 16]
+        if not grp:
+            grp = [left[0]]
+        left = [p for p in left if p not in grp]
+        clusters.append([sum(p[0] for p in grp) / len(grp), sum(p[1] for p in grp) / len(grp), len(grp), any(p[2] for p in grp)])
+    merged = []
+    for c in sorted(clusters, key=lambda c: -c[2]):
+        for mm in merged:
+            if (mm[0] - c[0]) ** 2 + (mm[1] - c[1]) ** 2 <= 36:
+                n = mm[2] + c[2]
+                mm[0], mm[1] = (mm[0] * mm[2] + c[0] * c[2]) / n, (mm[1] * mm[2] + c[1] * c[2]) / n
+                mm[2], mm[3] = n, mm[3] or c[3]
+                break
+        else:
+            merged.append(c)
+    keep = [c for c in merged if c[2] >= 4 or c[3]]
+    keep.sort(key=lambda c: (-int(c[3]), -c[2]))
+    for c in keep[:6]:
+        hubs[m].append((fac, c[0] / 100, c[1] / 100, c[2], c[3]))
+
 with open(os.path.join(OUT_CORE, 'Zones.lua'), 'w') as f:
     f.write(HEADER + 'local _, ns = ...\n')
-    f.write('-- uiMapID = { name, minLevel, maxLevel, faction (A/H/C contested/S sanctuary), continent (K/E/I), fishSkill, caves (names) }\n')
+    f.write('-- uiMapID = { name, minLevel, maxLevel, faction (A/H/C contested/S sanctuary), continent (K/E/I), fishSkill, caves (names),\n')
+    f.write('--   hubs = { {faction, x, y, npcs, flightPath}, ... } faction settlements from QuestieDB NPCs }\n')
     f.write('ns.Zones = {\n')
     for m, (n, lo, hi, fa, co) in sorted(ZONES.items()):
         fsk = fishing.get(m, (0, []))[0]
         cv = ', '.join(lua_str(x) for x in sorted(caves.get(m, [])))
-        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d, caves = { %s } },\n'
-                % (m, lua_str(n), lo, hi, fa, co, fsk, cv))
+        hb = ', '.join('{ "%s", %.3f, %.3f, %d, %s }' % (h[0], h[1], h[2], h[3], 'true' if h[4] else 'false') for h in hubs.get(m, []))
+        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d, caves = { %s },\n      hubs = { %s } },\n'
+                % (m, lua_str(n), lo, hi, fa, co, fsk, cv, hb))
     f.write('}\n')
 
 # ---------------------------------------------------------------- write data addon
@@ -409,7 +453,7 @@ print('node spawn points', total)
 
 with open(os.path.join(OUT_DATA, 'Mobs.lua'), 'w') as f:
     f.write(HEADER + 'local D = ForagerData\n')
-    f.write('-- [npcID] = "name|minLevel|maxLevel|creatureType|rank|skin item:% ,..|farm item:% ,..|green%,blue%,epic%,greenIlvl|pickpocket item:%|avg copper"\n')
+    f.write('-- [npcID] = "name|minLevel|maxLevel|creatureType|rank|skin item:% ,..|farm item:% ,..|green%,blue%,epic%,greenIlvl|pickpocket item:%|avg copper|friendly to (A/H)"\n')
     f.write('D.mobs = {\n')
     for nid in sorted(mob_rows):
         f.write('  [%d] = %s,\n' % (nid, lua_str(mob_rows[nid])))

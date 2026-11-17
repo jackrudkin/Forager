@@ -4,6 +4,12 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 1.6: risk level
+
+Every spot in Farm, Gather + Kill and Mobs & Drops ("Farm this mob") now shows a **risk level**: Low / Medium / High / Very high. Hover it to see why. See [Risk level](#risk-level).
+
+Also fixed: creatures friendly to your faction (guards, villagers, vendors) are no longer counted as farm targets or as danger. The database now records which faction each NPC belongs to.
+
 ## What's new in 1.5: skinning in Gather + Kill
 
 | Change | Details |
@@ -87,7 +93,7 @@ The sidebar has seven tabs. Below them, the **Now farming** card shows the activ
 | **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
 | **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
 | **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions, data health, **Save now** and **Backup now**. |
-| **Settings** | Route on world map / minimap, farm area outline, hide in combat/instances, route/area opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
+| **Settings** | Your ruleset (Auto / PvP / Normal), Hide spots with risk, route on world map / minimap, farm area outline, hide in combat/instances, route/area opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
 
 There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
 
@@ -150,6 +156,31 @@ The card shows the gain over the better of the two. If just killing pays more, t
 Defaults you can change in the tab: 30 s per kill, 3 s per skin, 30 yd reach, 5 min respawn. Live share and seconds per gather come from Settings → Finder assumptions.
 
 **Limitations:** it uses Classic spawn points and loot tables, distances are straight lines, and mobs you skip can still aggro. **Both** routes through herbs and ore, but you can only track one of them at a time.
+
+## Risk level
+
+Each spot gets a score from 0 to 100, made of three parts:
+
+| Part | What raises it |
+|---|---|
+| **Gank** (PvP ruleset only) | Zone: your faction's 5, contested 45, enemy territory 70; sanctuary 0. An enemy settlement within 300 yd adds 25 (35 if it has a flight path); within 700 yd adds 12. Your own guards within 250 yd take off 10. |
+| **Death** | Mobs above your level (12 per level, up to 50). Elite spawns in or near the area (20; 35 for 6 or more). Tight packs (20 if each mob has 2+ others within 12 yd; 10 for pairs). Caves (10). **Your own deaths there** (15 each, up to 45). |
+| **Hyperspawn** | Non-grey mob spawns per 100 × 100 yd: 0.5 → 10, 1 → 25, 2 → 45, 3+ → 60. Caves add 20, because players report fast respawns are worst there. |
+
+- **Overall** = 1 − (1 − gank)(1 − death)(1 − hyperspawn), treating the three as independent chances.
+- **Labels:** under 20 Low, under 40 Medium, under 65 High, otherwise Very high.
+- **Settlements** come from QuestieDB: clusters of NPCs friendly to only one faction (towns, camps, flight masters), 46 zones.
+- **Ruleset** (Settings → Your ruleset): on Forever's PvP ruleset you're flagged in contested and enemy zones, so being unflagged there once proves you're on Normal. **Auto** learns this, and assumes PvP until it knows.
+- **Deaths:** Forager logs where you die (2% map cells) and raises the death risk there.
+- **Filter:** Settings → **Hide spots with risk**: Show all / Very high / High or worse / Medium or worse.
+- **Where it shows:**
+  - on result cards;
+  - in the detail panels (hover for the reasons);
+  - on the Now farming card.
+
+**Limitations:**
+- It can't see live players, how many people are in a zone, or the game's dynamic respawn rate. Hyperspawn is estimated from spawn density.
+- Neutral (yellow) mobs count the same as aggressive ones.
 
 ## Goals
 
@@ -244,14 +275,15 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 34 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 35 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
   - cave learning and explored-area lookups, preview / open map at farm / game map pin, world-map drawing on zone, continent and unrelated maps;
   - OpenMap (mocked API): positions, layer above its art, view glide, window hide/restore, preview cleared on close;
   - Gather + Kill: split and loop time add up, never below gathering alone, worthy/skipped mobs on the right side of the loop rate, slower kills never raise the rate, ore/herb/both, start as a farm;
-  - Gather + Kill skinning: skins only within your skill, skin-only mode, no skins without Skinning, skin time never helps, skill-ups split and best-ratio property, both modes render.
+  - Gather + Kill skinning: skins only within your skill, skin-only mode, no skins without Skinning, skin time never helps, skill-ups split and best-ratio property, both modes render;
+  - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
@@ -273,6 +305,7 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | API / behaviour | Used for | If it fails |
 |---|---|---|
 | NPC ID field in obfuscated creature GUIDs (build 70425+) | Tooltip, capture | No tooltip lines; capture can't attribute mobs |
+| `GetZonePVPInfo`, `UnitIsPVP("player")` | Ruleset detection | Stays on "PvP assumed"; set it in Settings |
 | `GetLootSourceInfo` returning non-secret GUIDs out of combat | Node type by object ID, per-corpse counting | Falls back to the main item; one corpse per loot |
 | Gather spell IDs 2366/2575/8613/7620/921 (name fallback built in) | Detect gathers | Learned automatically by name |
 | `C_QuestLog.GetQuestsOnMap`, `GetQuestObjectives` | Questing mode | Ranked without detour ("No quest objectives found") |

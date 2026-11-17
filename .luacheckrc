@@ -21,5 +21,5 @@ read_globals = {
   "GatherMate2FishDB", "GatherLiteSettings",
   "C_MapExplorationInfo", "CreateVector2D", "IsIndoors", "GetSubZoneText", "UnitCanAttack", "GetBuildInfo",
   "OpenWorldMap", "UiMapPoint", "C_SuperTrack", "TomTom", "HBD_PINS_WORLDMAP_SHOW_CONTINENT", "Mixin",
-  "BackdropTemplateMixin", "OpenMapAPI",
+  "BackdropTemplateMixin", "OpenMapAPI", "GetZonePVPInfo", "UnitIsPVP",
 }

@@ -2,7 +2,7 @@
 ## Title: Forager Data
 ## Notes: Bundled node, mob and loot data for Forager (QuestieDB Forever + CMaNGOS classic-db, GPLv3). Loaded on demand.
 ## Author: Jack
-## Version: 1.5.0
+## Version: 1.6.0
 ## X-License: GPL-3.0-or-later
 ## Dependencies: Forager
 ## LoadOnDemand: 1

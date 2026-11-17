@@ -208,7 +208,7 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
         for _, zone in ipairs(zones) do
             for npc, pts in pairs(DS:GetZoneMobs(zone)) do
                 local m = DS:GetMob(npc)
-                if m and (zoneMode ~= "level" or (m.maxLevel <= lvl + 3 and m.maxLevel >= lvl - 10)) then
+                if m and not DS:IsFriendly(m) and (zoneMode ~= "level" or (m.maxLevel <= lvl + 3 and m.maxLevel >= lvl - 10)) then
                     local keep = true
                     local itemP
                     if itemID then
