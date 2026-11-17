@@ -176,8 +176,8 @@ The sidebar has seven tabs. Below them, the **Now farming** card shows the activ
 | **Mobs & Drops** | Pick a zone (current zone, all zones for your level, or any zone), a Location filter and a mob/item filter. Columns: Mob, Level (coloured by difficulty), Where (cave name / Outdoors / ?), Zone, **Gold/kill**, Best drop with chance, Green %, Blue %, Skin skill, Spawns. Sorted by gold per kill. Click a mob to see its top 8 drops with chance and value, then **Farm this mob** (area and route around its densest camp) or **Show on world map**. |
 | **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
 | **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
-| **Stats** | This session (time, value, gold/hour, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions, data health, **Save now** and **Backup now**. |
-| **Settings** | Your ruleset (Auto / PvP / Normal), Hide spots with risk, route on world map / minimap, farm area outline, hide in combat/instances, route/area opacity, route HUD, game map pin, TomTom, enemy zones, elites, finder assumptions, travel speed, tooltip parts, price source order, sharing, minimap button, save reminder, debug, **Print diagnostics**. |
+| **Stats** | This session (active time, value, gold/hour vs the farm's estimate, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions with each one's result vs its estimate, data health, **Save now** and **Backup now**. |
+| **Settings** | Three pages. **Maps & farming**: route on world map / minimap, area outline, hide in combat/instances, opacity, HUD, map pin, TomTom, enemy zones, elites, ruleset, risk filter, farming helpers (tracking switcher, re-track after death, ready check, skip cooling stops, idle-paused clock). **Estimates**: spawn-pool data, fallback live share, estimate weight, extra seconds per node, fishing casts, Bountiful Harvest rank, kills per hour, travel speed, what's been measured from your play, net gold (AH cut + repairs), calibration. **Tooltips, prices & more**: tooltip parts (incl. best spot on item tooltips), price source order, TSM price, sharing, minimap button, save reminder, debug, **Self-test**, **Diagnostics**. |
 
 There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
 
@@ -286,18 +286,18 @@ In the Farm tab, **Search in** picks the scope: **Everywhere** (zones for your l
 (Ornery Plainstrider, level 17)
 
 ```
-Skinnable 70 (you 85)                           estimate | me n=4
+Skinnable 70 (you 85)                           blend n=4
   Light Leather 74% · Medium Leather 19% · Light Hide 5.1% · Pristine Leather 2.9%
 Drops                                           estimate
   Strider Meat 40% · Shadowgem 0.34%
-Gear: 2% · 0% · 0%   (green · blue · purple)        Classic est.
+Gear: 2% · 0% · 0%   (green · blue · purple)        estimate
   Green (ilvl ~18) DE: Strange Dust ≈ 4s 20c
 Pick pocket: Battered Junkbox 15%               (Rogues)
 ```
 
 - The required skinning skill uses the Forever formula: level 1-10 → 1; 11-20 → (level − 10) × 10; 21+ → level × 5. It's coloured against your skill.
 - Skin lists include Forever's Pristine Leather for beasts level 10–26 (see [Data sources & accuracy](#data-sources--accuracy)).
-- Your own observations replace the estimate once the sample reaches the threshold (default n = 30). Until then both are shown. Mobs with no data show `learning (n=…)`; numbers are never invented.
+- Your own observations are blended with the estimate: `blend n=…` until n reaches the estimate weight (default 30), then `my data n=…`. Mobs with no bundled data show only what you've seen; numbers are never invented.
 - If a value comes back secret (in restricted content), the lines are simply skipped.
 
 ## Slash commands
