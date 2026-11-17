@@ -759,7 +759,9 @@ end
 function UI.ItemTip(owner, itemID, extra, anchor)
     if not owner or not itemID then return end
     GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+    UI.ownTip = true -- Forager's window already says where to farm: no "best spot" lines here
     local ok = GameTooltip.SetItemByID and pcall(GameTooltip.SetItemByID, GameTooltip, itemID)
+    UI.ownTip = false
     if not ok or (GameTooltip.NumLines and GameTooltip:NumLines() == 0) then
         GameTooltip:AddLine(ns.DS:ColoredItem(itemID) or ("Item " .. itemID), 1, 1, 1)
     end

@@ -1,5 +1,6 @@
--- Capture: records every gather, skin, pick pocket and creature loot with zone + coordinates.
--- Out-of-combat events only matter here; every value is checked with issecretvalue.
+-- Capture: records every gather, skin, pick pocket and creature loot with zone + coordinates, and
+-- measures what the estimates need: fights and downtime, travel speed, repairs, and farm sessions
+-- (active time only: the clock pauses while you are AFK or idle). Every value is checked with issecretvalue.
 local _, ns = ...
 local Capture = {}
 ns.Capture = Capture
@@ -13,9 +14,17 @@ local lootDone           -- guard: one record per loot window
 local seenCorpse = {}    -- [guid] = true (this session) so a corpse counts once
 local castStart          -- { kind, time } of the gather cast in progress (for measured cast times)
 local lootTimer          -- { kind, time } of the open gather loot window
-local TIMED = { herb = true, ore = true, skin = true }
-local session = { start = nil, value = 0, items = {}, gathers = 0, kills = 0, money = 0 }
+local TIMED = { herb = true, ore = true, skin = true, mob = true }
+local session = { start = nil, active = 0, value = 0, items = {}, gathers = 0, kills = 0, money = 0 }
 Capture.session = session
+local IDLE = 180          -- seconds without moving, looting, casting or fighting = idle
+local lastActivity = 0
+local fight, lastFight    -- { start, stop, kills, down } current / previous fight
+local fightEnd            -- GetTime() the previous fight ended (downtime is measured from here)
+local repairStart         -- repair cost when a merchant opened
+local corpseCount = 0
+
+function Capture:Activity() lastActivity = GetTime() end
 
 local function buildSpellTables()
     for kind, ids in pairs(ns.GatherSpells) do
@@ -48,6 +57,10 @@ function Capture:Init()
         if unit ~= "player" then return end
         local kind = kindForSpell(spellID)
         castStart = kind and TIMED[kind] and { kind = kind, time = GetTime() } or nil
+        if kind then
+            lastActivity = GetTime()
+            if kind ~= "skin" then fightEnd = nil end -- gathering between fights is not downtime
+        end
     end)
     ns:On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
         if unit ~= "player" then return end
@@ -79,6 +92,94 @@ function Capture:Init()
         Capture.lastMoney = m
     end)
     Capture.lastMoney = GetMoney()
+    -- fights: seconds in combat per kill, and the downtime before each fight
+    ns:On("PLAYER_REGEN_DISABLED", function() Capture:FightStart() end)
+    ns:On("PLAYER_REGEN_ENABLED", function() Capture:FightEnd() end)
+    ns:On("PLAYER_DEAD", function() fight, fightEnd = nil, nil end)
+    -- repairs: cost before and after a merchant visit
+    ns:On("MERCHANT_SHOW", function() repairStart = Capture.RepairCost() end)
+    ns:On("UPDATE_INVENTORY_DURABILITY", function() Capture:CheckRepair() end)
+    ns:On("MERCHANT_CLOSED", function() Capture:CheckRepair() repairStart = nil end)
+    ns:On("PLAYER_FLAGS_CHANGED", function() ns:Fire("FORAGER_SESSION_UPDATE") end)
+    ns.Ticker(2, function()
+        local ok, err = pcall(Capture.Tick, Capture)
+        if not ok then ns:Error("capture tick", err) end
+    end)
+end
+
+-------------------------------------------------------------------------------
+-- fights, speed, idle clock, repairs
+-------------------------------------------------------------------------------
+function Capture:FightStart()
+    local now = GetTime()
+    lastActivity = now
+    local down = fightEnd and (now - fightEnd) or nil
+    fight = { start = now, kills = 0, down = down }
+end
+
+function Capture:FightEnd()
+    local now = GetTime()
+    lastActivity = now
+    if not fight then return end
+    fight.stop = now
+    local f = fight
+    fight, lastFight = nil, f
+    fightEnd = now
+    -- loot comes after combat: book the fight once its corpses have had time to be looted
+    ns.After(30, function()
+        if f.kills > 0 then ns.Learn:AddFight(f.stop - f.start, f.kills, f.down) end
+    end)
+end
+
+--- A corpse was looted: it belongs to the fight in progress or the one that just ended.
+function Capture:CountKill()
+    local f = fight or (lastFight and lastFight.stop and GetTime() - lastFight.stop < 30 and lastFight)
+    if f then f.kills = f.kills + 1 end
+end
+
+--- Total repair cost of your gear now (copper), or nil.
+function Capture.RepairCost()
+    if not GetRepairAllCost then return nil end
+    local ok, cost = pcall(GetRepairAllCost)
+    cost = ok and Safe(cost) or nil
+    return type(cost) == "number" and cost or nil
+end
+
+function Capture:CheckRepair()
+    if not repairStart then return end
+    local now = Capture.RepairCost()
+    if now and now < repairStart then
+        local spent = repairStart - now
+        local stats = ns.db.stats
+        local kills = (stats.kills or 0) - (stats.repairMark or 0)
+        stats.repairMark = stats.kills or 0
+        ns.Learn:AddRepair(spent, kills)
+        repairStart = now
+    end
+end
+
+--- Every 2 s: active-time clock (pauses when AFK/idle) and a travel speed sample.
+function Capture:Tick()
+    local now = GetTime()
+    local inCombat = InCombatLockdown()
+    if not inCombat and GetUnitSpeed and not (UnitOnTaxi and UnitOnTaxi("player")) and not (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) then
+        local ok, cur = pcall(GetUnitSpeed, "player")
+        cur = ok and Safe(cur) or nil
+        if type(cur) == "number" and cur > 0 then
+            lastActivity = now
+            if not (IsSwimming and IsSwimming()) then ns.Learn:AddSpeed(IsMounted and IsMounted() and true or false, cur) end
+        end
+    elseif inCombat then
+        lastActivity = now
+    end
+    if session.start then
+        local dt = now - (session.tick or now)
+        session.tick = now
+        local afk = UnitIsAFK and Safe(UnitIsAFK("player"))
+        local idle = ns.settings.afkPause ~= false and (afk or now - lastActivity > IDLE)
+        if dt > 0 and dt < 10 and not idle then session.active = session.active + dt end
+        session.paused = idle or nil
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -111,7 +212,7 @@ local function isGear(itemID)
 end
 
 function Capture:AddValue(copper, itemID, qty)
-    if not session.start then session.start = time() end
+    if not session.start then session.start, session.tick = time(), GetTime() end
     session.value = session.value + (copper or 0)
     if itemID then session.items[itemID] = (session.items[itemID] or 0) + (qty or 1) end
     ns:Fire("FORAGER_SESSION_UPDATE")
@@ -152,6 +253,7 @@ function Capture:RecordNode(uiMap, x, y, typeKey, items, source)
     if best then
         rec = zone[best]
         newVisit = not rec.l or (time() - rec.l) > ns.Learn.VISIT_GAP
+        if newVisit and rec.l and (source or "me") == "me" then ns.Learn:AddReturn(typeKey, time() - rec.l) end
     else
         rec = { t = typeKey, c = 0, y = {}, s = source or "me" }
         zone[ns.EncodeXY(x, y)] = rec
@@ -198,6 +300,7 @@ end
 function Capture:OnLoot()
     if lootDone then return end
     lootDone = true
+    lastActivity = GetTime()
     Capture.lootOpenAt = GetTime()
     local n = Safe(GetNumLootItems()) or 0
     if n == 0 then return end
@@ -241,6 +344,7 @@ function Capture:OnLoot()
         if uiMap and x and typeKey then
             local key, _, newVisit = Capture:RecordNode(uiMap, x, y, typeKey, items, "me")
             ns.Learn:AddNode(typeKey, items, newVisit)
+            ns:Fire("FORAGER_NODE_GATHERED", uiMap, x, y, typeKey)
             if ns.Comms then ns.Comms:Share(typeKey, uiMap, key) end
             ns:CountGatherForReminder()
         end
@@ -286,6 +390,7 @@ function Capture:OnLoot()
     end
 
     -- creature loot (possibly several corpses with area loot)
+    lootTimer = { kind = "mob", time = now }
     local perCorpse = {}
     for slot = 1, n do
         local itemID, qty = slotItem(slot)
@@ -303,6 +408,9 @@ function Capture:OnLoot()
     for guid, c in pairs(perCorpse) do
         if not seenCorpse[guid] and c.npc then
             seenCorpse[guid] = true
+            corpseCount = corpseCount + 1
+            if corpseCount > 400 then wipe(seenCorpse) corpseCount = 0 seenCorpse[guid] = true end
+            Capture:CountKill()
             local m = ns.db.mobs[c.npc] or {}
             ns.db.mobs[c.npc] = m
             m.k = (m.k or 0) + 1
@@ -327,25 +435,54 @@ end
 -------------------------------------------------------------------------------
 -- session
 -------------------------------------------------------------------------------
+--- Copper per hour of active time, and the active seconds.
 function Capture:SessionPerHour()
     if not session.start then return 0, 0 end
-    local secs = math.max(60, time() - session.start)
-    return session.value * 3600 / secs, secs
+    local secs = math.max(60, session.active)
+    return session.value * 3600 / secs, session.active
 end
 
 function Capture:ResetSession()
+    Capture:FinishFarm()
     ns:SaveSession()
-    session.start, session.value, session.gathers, session.kills, session.money = nil, 0, 0, 0, 0
+    session.start, session.active, session.tick, session.paused = nil, 0, nil, nil
+    session.value, session.gathers, session.kills, session.money = 0, 0, 0, 0
+    session.farm, session.group, session.est, session.label = nil, nil, nil, nil
     wipe(session.items)
     ns:Fire("FORAGER_SESSION_UPDATE")
+end
+
+--- Farming a spot starts a fresh session tied to it, so it can be compared with the estimate.
+function Capture:BeginFarm(r)
+    if not r then return end
+    local key = ns.Learn.FarmKey(r)
+    if session.farm == key then return end
+    Capture:ResetSession()
+    session.farm, session.group, session.est = key, ns.Learn.FarmGroup(r), r.estGross
+    session.label = (r.areaName and (r.areaName .. ", ") or "") .. (r.zoneName or "")
+    session.start, session.tick = time(), GetTime()
+    lastActivity = GetTime()
+    ns:Fire("FORAGER_SESSION_UPDATE")
+end
+
+--- Book the farm session for calibration (needs 10 minutes of active farming).
+function Capture:FinishFarm()
+    if not session.farm or not session.est or session.est <= 0 then return end
+    if ns.settings.calibrate ~= false and session.active >= 600 then
+        local perHour = Capture:SessionPerHour()
+        ns.Learn:AddFarm(session.farm, session.group, session.est, perHour, session.active / 3600)
+    end
+    session.farm = nil
 end
 
 function ns:SaveSession()
     if not session.start or not ns.db then return end
     local perHour, secs = Capture:SessionPerHour()
+    if secs < 60 and session.value == 0 then return end
     table.insert(ns.db.sessions, 1, {
         start = session.start, secs = secs, value = session.value, perHour = perHour,
         gathers = session.gathers, kills = session.kills, char = ns.CharKey(), zone = ns.Player:MapID(),
+        est = session.est, spot = session.label,
     })
     while #ns.db.sessions > 30 do table.remove(ns.db.sessions) end
 end

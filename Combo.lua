@@ -88,14 +88,16 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
     for _, p in ipairs(nodes) do
         if near(p) then
             nodeOn[#nodeOn + 1] = p
-            nodeV = nodeV + p.v * ctx.active
-            nodeG = nodeG + p.g * ctx.active
-            nodeSU = nodeSU + p.su * ctx.active
-            gatherT = gatherT + p.secs * ctx.active
-            byType[p.t] = (byType[p.t] or 0) + 1
+            local a = p.a -- chance the spawn point holds a live node
+            nodeV = nodeV + p.v * a
+            nodeG = nodeG + p.g * a
+            nodeSU = nodeSU + p.su * a
+            gatherT = gatherT + p.secs * a
+            byType[p.t] = (byType[p.t] or 0) + a
         end
     end
-    local liveNodes = #nodeOn * ctx.active
+    local liveNodes = 0
+    for _, a in pairs(byType) do liveNodes = liveNodes + a end
     local walk = route.length / ctx.speed
     local gather = gatherT
     -- mobs you pass, per type
@@ -105,7 +107,8 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
             local e = types[p.npc]
             if not e then
                 local inf = info[p.npc]
-                e = { npc = p.npc, inf = inf, m = inf.m, v = inf.v, c = 0, killT = inf.killT, rate = inf.v / inf.killT }
+                e = { npc = p.npc, inf = inf, m = inf.m, v = inf.v, c = 0, killT = inf.killT, rate = inf.v / inf.killT,
+                    resp = math.max(30, DS:MobRespawn(inf.m, ctx.respawn)) }
                 types[p.npc] = e
             end
             e.c = e.c + 1
@@ -119,16 +122,18 @@ local function simulate(uiMap, route, nodes, mobs, info, ctx)
     local base = walk + gather
     local T, I, chosen, avail = base, nodeV, {}, 1
     for _ = 1, 5 do
-        avail = math.min(1, T / ctx.respawn)
-        local Tn, In = base, nodeV
+        local Tn, In, ac, an = base, nodeV, 0, 0
         chosen = {}
         for _, e in ipairs(order) do
+            local av = math.min(1, T / e.resp) -- share of this type that has respawned since the last loop
+            ac, an = ac + e.c * av, an + e.c
             if e.rate > 0 and (Tn <= 0 or e.rate > In / Tn) then
-                local a = e.c * avail
+                local a = e.c * av
                 Tn, In = Tn + a * e.killT, In + a * e.v
                 chosen[e.npc] = a
             end
         end
+        avail = an > 0 and ac / an or 1
         T, I = Tn, In
     end
     if T <= 0 then return nil end
@@ -211,7 +216,7 @@ local function itemsPerHour(r, sim, info, level)
     for tk, c in pairs(sim.byType) do
         local t = DS:GetType(tk)
         for _, y in ipairs(t and ns.Learn:NodeInfo(t).perNode or {}) do
-            local q = c * r.active * y[2] * loops
+            local q = c * y[2] * loops -- c = live nodes of the type per loop
             add(y[1], { id = y[1], node = true }, q, q * priceOf(y[1]))
         end
     end
@@ -283,7 +288,8 @@ local function evalZone(uiMap, gather, opts, ctx, out)
                 local su = (ns.SkillUpChance[col] or 0) * info.taps
                 local v = ctx.mode == "skill" and su or g
                 if v > 0 then
-                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, g = g, su = su, secs = info.secs, w = v * ctx.active }
+                    local a = DS:LiveShare(t, uiMap)
+                    nodes[#nodes + 1] = { x = pt.x, y = pt.y, t = pt.t, v = v, g = g, su = su, secs = info.secs, a = a, w = v * a }
                     minSkill = math.min(minSkill or 999, t.skill or 0)
                 end
             end
@@ -312,8 +318,8 @@ local function evalZone(uiMap, gather, opts, ctx, out)
     -- shortlist windows: best for nodes alone, and best for nodes + mobs (rough weights)
     local W = ns.Clamp(math.floor((loc == "cave" and 450 or 800) / (P:ZoneSize(uiMap) / GRID) + 0.5), 2, 9)
     local gNodes, gBoth = newGrid(), newGrid()
-    local avgSecs = 0
-    for _, p in ipairs(nodes) do avgSecs = avgSecs + p.secs / #nodes end
+    local avgSecs, avgA = 0, 0
+    for _, p in ipairs(nodes) do avgSecs, avgA = avgSecs + p.secs / #nodes, avgA + p.a / #nodes end
     for _, p in ipairs(nodes) do
         local cx, cy = cell(p.x, p.y)
         gNodes[cy * GRID + cx] = gNodes[cy * GRID + cx] + p.w
@@ -323,7 +329,7 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         local cx, cy = cell(p.x, p.y)
         local inf = info[p.npc]
         -- a kill costs killT; weigh it like the same time spent gathering
-        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * avgSecs / inf.killT * ctx.active
+        gBoth[cy * GRID + cx] = gBoth[cy * GRID + cx] + inf.v * avgSecs / inf.killT * avgA
     end
     local cands = topWindows(gNodes, W, 3)
     for _, c in ipairs(topWindows(gBoth, W, 3)) do
@@ -410,9 +416,10 @@ local function evalZone(uiMap, gather, opts, ctx, out)
         local mobsOnly, nm = 0, 0
         for _, p in ipairs(sim.areaMobs) do
             local inf = info[p.npc]
-            mobsOnly, nm = mobsOnly + inf.v * inf.lf, nm + 1
+            local up = math.min(1, 300 / math.max(30, DS:MobRespawn(inf.m, 300)))
+            mobsOnly, nm = mobsOnly + inf.v * inf.lf * up, nm + up
         end
-        if nm > 0 then mobsOnly = mobsOnly / nm * ns.settings.killsPerHour * math.min(1, nm / 25) end
+        if nm > 0 then mobsOnly = mobsOnly / nm * ns.Learn:KillsPerHour() * math.min(1, nm / 25) end
         local mobsList, worthy, skipped, minL, maxL, minSkin = {}, {}, {}, 99, 0, nil
         for _, e in ipairs(sim.types) do
             local a = sim.chosen[e.npc]
@@ -444,8 +451,9 @@ local function evalZone(uiMap, gather, opts, ctx, out)
             nodesPerHour = sim.liveNodes * k, killsPerHour = sim.kills * k, skinsPerHour = sim.skins * k,
             unitsPerHour = sim.kills * k, unitLabel = "kills/h",
             mobs = mobsList, worthy = worthy, skipped = skipped, minSkill = minSkill, minSkin = minSkin,
-            minLevel = maxL > 0 and minL or nil, maxLevel = maxL > 0 and maxL or nil, active = ctx.active,
-            zoneName = zone.name, zoneMin = zone.min, zoneMax = zone.max, confidence = ns.Finder.YieldSource(sim.byType),
+            minLevel = maxL > 0 and minL or nil, maxLevel = maxL > 0 and maxL or nil,
+            active = #sim.nodeOn > 0 and sim.liveNodes / #sim.nodeOn or 0,
+            zoneName = DS:ZoneName(uiMap), zoneMin = zone.min, zoneMax = zone.max, note = ns.HotfixNotes[uiMap], confidence = ns.Finder.YieldSource(sim.byType),
             assumedSkin = ctx.assumedSkin,
         }
         r.items = itemsPerHour(r, sim, info, level)
@@ -463,9 +471,27 @@ end
 -------------------------------------------------------------------------------
 --- opts: gather ("ore"|"herb"|"both"), mode ("gold"|"skill"), killFor ("all"|"skin"), zones, location,
 --- includeEnemy, perZone, skills
+local cache = {}
+function Combo:FlushCache() wipe(cache) end
+
 function Combo:Run(opts)
-    DS:Load()
     opts = opts or {}
+    local key = ns.OptsKey(opts, "combo")
+    for i, c in ipairs(cache) do
+        if c.key == key then
+            table.insert(cache, 1, table.remove(cache, i))
+            Combo.last = c.last
+            return c.results
+        end
+    end
+    local out = Combo:Search(opts)
+    table.insert(cache, 1, { key = key, results = out, last = Combo.last })
+    while #cache > 3 do table.remove(cache) end
+    return out
+end
+
+function Combo:Search(opts)
+    DS:Load()
     local gather = opts.gather or Combo:DefaultGather()
     local s = ns.settings
     opts.level = opts.level or P:Level()
@@ -488,16 +514,20 @@ function Combo:Run(opts)
     local skinCast, skinSrc = ns.Learn:CastSeconds("skin")
     local skinSec = (skinSrc == "me") and (skinCast + (ns.Learn:LootSeconds("skin"))) or s.comboSkinSeconds
     local ctx = {
-        speed = P:Speed(), active = s.activeFraction,
-        killSec = s.comboKillSeconds, skinSec = skinSec, skinMeasured = skinSrc == "me", pull = s.comboPullYards,
+        speed = P:Speed(),
+        killSec = ns.Learn:KillSeconds(), skinSec = skinSec, skinMeasured = skinSrc == "me", pull = s.comboPullYards,
         respawn = math.max(30, s.comboRespawn), mode = opts.mode or Combo:Mode(), killFor = killFor, assumedSkin = assumedSkin,
         hidden = opts.realistic and { n = 0, reasons = {} } or nil,
     }
     local out = {}
-    for _, uiMap in ipairs(ns.Finder.ZoneCandidates(opts)) do
+    local cands = ns.Finder.ZoneCandidates(opts)
+    for ci, uiMap in ipairs(cands) do
+        ns.Async.progress = ci / #cands
         local ok, err = pcall(evalZone, uiMap, gather, opts, ctx, out)
-        if not ok then ns:Debug("combo " .. uiMap .. ": " .. tostring(err)) end
+        if not ok then ns:Error("combo " .. uiMap, err) end
+        ns.Yield()
     end
+    ns.Net:ApplyAll(out)
     table.sort(out, function(a, b) return a.perHour > b.perHour end)
     out = ns.Risk:Filter(out)
     local hidden = ctx.hidden

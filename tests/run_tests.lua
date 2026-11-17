@@ -6,7 +6,7 @@ M.Install()
 
 local passed, failed = 0, 0
 local function test(name, fn)
-    local ok, err = pcall(fn)
+    local ok, err = xpcall(fn, function(e) return os.getenv("TRACE") and debug.traceback(e, 2) or e end)
     if ok then passed = passed + 1 print("  ok   " .. name)
     else failed = failed + 1 print("  FAIL " .. name .. "\n       " .. tostring(err)) end
 end
@@ -55,7 +55,7 @@ loadToc(BACKUP_DIR, "Forager_Backup.toc", "Forager_Backup", {})
 print("Tests:")
 test("login initialises DB, skills, data", function()
     M.Fire("PLAYER_LOGIN")
-    assertTrue(ns.db and ns.db.version == 5, "db")
+    assertTrue(ns.db and ns.db.version == 6, "db")
     assertTrue(ns.Player:Skill("herb") == 50, "herb skill")
     assertTrue(ForagerData and ForagerData.nodes, "data loaded")
 end)
@@ -152,7 +152,7 @@ test("tooltip lines for Ornery Plainstrider (3245)", function()
     for _, l in ipairs(lines) do text = text .. l[1] .. " " .. (l[2] or "") .. "\n" end
     assertTrue(text:find("Skinnable 70"), "skin req: " .. text)
     assertTrue(text:find("Gear:"), "gear line")
-    assertTrue(text:find("Classic est"), "label")
+    assertTrue(text:find("estimate"), "label")
 end)
 
 test("tooltip post-call hook with secret guid does not error", function()
@@ -229,6 +229,8 @@ end)
 
 test("time per node: Classic cast times x gathers per vein, then your measured casts", function()
     local copper, peace = ns.NodeTypes[34], ns.NodeTypes[1]
+    ns.Learn.Store().nodes, ns.Learn.Store().bh = {}, {}
+    ns.Learn:Changed()
     local ci, pi = ns.Learn:NodeInfo(copper), ns.Learn:NodeInfo(peace)
     assertTrue(math.abs(ci.secs - (3 * 3.2 + 1)) < 0.01, "copper vein: 3 x 3.2 s + 1 s = " .. ci.secs)
     assertTrue(math.abs(pi.secs - (5 + 1)) < 0.01, "peacebloom: 5 s + 1 s = " .. pi.secs)
@@ -257,7 +259,7 @@ test("time per node: Classic cast times x gathers per vein, then your measured c
     assertTrue(math.abs(ns.Learn:CastSeconds("herb") - 1.5) < 0.01, "interrupted cast ignored")
 end)
 
-test("mining: loots on one vein are one visit; your yields replace Classic from n visits", function()
+test("mining: loots on one vein are one visit; your yields are blended with Classic (n vs estimate weight)", function()
     local before = ns.Learn.Store().nodes[34]
     local v0, n0 = before and before.v or 0, before and before.n or 0
     M.pos = { 0.33, 0.77 }
@@ -269,39 +271,63 @@ test("mining: loots on one vein are one visit; your yields replace Classic from 
     end
     local r = ns.Learn.Store().nodes[34]
     assertTrue(r.v == v0 + 1 and r.n == n0 + 3, "one visit, three loots")
-    -- Classic estimate until minSamples visits, with the Scarce item pending
+    -- few visits: mostly the Classic estimate, Scarce pending
     local copper = ns.NodeTypes[34]
     local info = ns.Learn:NodeInfo(copper)
-    assertTrue(not info.learned and info.scarce == 249391 and not info.scarceRate, "classic + scarce pending")
-    -- enough visits: 2 loots of 2 ore each per vein, Pyrite on 1 in 10 loots
+    assertTrue(not info.learned and info.scarce == 249391 and not info.scarceRate and info.src:find("blend"), "blend + scarce pending")
+    -- 40 visits: 2 loots of 2 ore each per vein, Pyrite on 1 in 10 loots; k = 30 -> 40/70 yours
     ns.Learn.Store().nodes[34] = { v = 40, n = 80, y = { [2770] = 160, [249391] = 8 } }
+    ns.Learn.Store().bh = {}
     ns.Learn:Changed()
     info = ns.Learn:NodeInfo(copper)
-    assertTrue(info.learned and math.abs(info.taps - 2) < 0.001, "learned taps")
-    assertTrue(math.abs(ns.Learn:NodeQty(copper, 2770) - 4) < 0.001 and math.abs(ns.Learn:NodeQty(copper, 249391) - 0.2) < 0.001, "learned per node")
+    local w = 40 / 70
+    local classicOre = 0
+    for _, y in ipairs(copper.yields) do if y[1] == 2770 then classicOre = classicOre + y[2] end end
+    assertTrue(info.learned and math.abs(info.taps - (w * 2 + (1 - w) * copper.taps)) < 0.001, "blended taps " .. info.taps)
+    local wantOre = w * 4 + (1 - w) * classicOre * copper.taps
+    assertTrue(math.abs(ns.Learn:NodeQty(copper, 2770) - wantOre) < 0.001, "blended ore per node " .. ns.Learn:NodeQty(copper, 2770) .. " want " .. wantOre)
+    assertTrue(math.abs(ns.Learn:NodeQty(copper, 249391) - w * 0.2) < 0.001, "pyrite: yours blended with no estimate")
     assertTrue(math.abs(info.scarceRate - 0.1) < 0.001, "scarce rate per gather")
     assertTrue(ns.Finder:NodeValue(copper) > 0, "value from learned yields")
-    -- pooled Scarce rate feeds other Pyrite nodes still on Classic yields once 100 gathers are logged
+    -- pooled Scarce rate (per gather x gathers per node) for every Pyrite node once 100 gathers are logged
     ns.Learn.Store().nodes[34] = { v = 60, n = 120, y = { [2770] = 240, [249391] = 12 } }
     ns.Learn.Store().nodes[35] = nil
+    ns.Learn.Store().bh = {}
     ns.Learn:Changed()
     local rate, n = ns.Learn:ScarceNodeRate(249391)
     assertTrue(n == 120 and math.abs(rate - 0.1) < 0.001, "pooled")
     local tin = ns.Learn:NodeInfo(ns.NodeTypes[35])
     assertTrue(tin.scarceRate and ns.Learn:NodeQty(ns.NodeTypes[35], 249391) > 0, "tin gets the pooled Pyrite rate")
     assertTrue(ns.DS:ItemName(249391) == "Pyrite" and ns.DS:ItemVendor(249391) == 100 and ns.DS:ItemQuality(249391) == 2, "scarce item data")
+    local copperInfo = ns.Learn:NodeInfo(copper)
+    assertTrue(math.abs(ns.Learn:NodeQty(copper, 249391) - 0.1 * copperInfo.taps) < 0.001, "pooled rate x gathers per node")
+    -- Bountiful Harvest rank 2: +40% on the pooled rate; data seeded at rank 0 with nothing new is re-scaled
+    ns.settings.harvestRank = 2
+    ns.Learn:SetHarvestRank(2)
+    rate = ns.Learn:ScarceNodeRate(249391)
+    assertTrue(math.abs(rate - 0.1) < 0.001, "seeded data re-scaled to the new rank: same measured rate " .. rate)
+    ns.Learn:AddNode(34, { [2770] = 2 }, true)
+    rate = ns.Learn:ScarceNodeRate(249391)
+    assertTrue(rate < 0.1 and rate > 0.098, "new gathers count at rank 2 " .. rate)
+    ns.settings.harvestRank = 0
+    ns.Learn:SetHarvestRank(0)
     ns.Learn.Store().nodes[34], ns.Learn.Store().nodes[35] = nil, nil
+    ns.Learn.Store().bh = {}
     ns.Learn:Changed()
 end)
 
-test("skinning: Pristine Leather for beasts 10-26, own skins with quantities replace estimates", function()
-    local list = ns.DS:GetMob(3245).skin -- Ornery Plainstrider, beast
-    local m = ns.DS:GetMob(3245)
-    local hasPL = false
-    for _, e in ipairs(list) do if e[1] == 249427 then hasPL = math.abs(e[2] - 0.029) < 1e-6 end end
-    assertTrue(m.ctype == 1 and (m.minLevel <= 26 and m.maxLevel >= 10) == hasPL, "Pristine Leather seed matches level band")
-    -- your own skins (with quantities) take over from minSamples
+test("skinning: Pristine Leather for beasts 10-26, own skins with quantities blended with estimates", function()
     local own = ns.db.mobs[3245]
+    local keep = { own.s, own.ss, own.si, own.sq }
+    own.s, own.ss, own.si, own.sq = 0, nil, nil, nil
+    ns.DS:InvalidateMobs()
+    local m = ns.DS:GetMob(3245) -- Ornery Plainstrider, beast
+    local hasPL = false
+    for _, e in ipairs(m.skin) do if e[1] == 249427 then hasPL = math.abs(e[2] - 0.029) < 1e-6 end end
+    assertTrue(m.ctype == 1 and (m.minLevel <= 26 and m.maxLevel >= 10) == hasPL, "Pristine Leather seed matches level band")
+    local baseLeather = 0
+    for _, e in ipairs(m.skinBase) do if e[1] == 2318 then baseLeather = e[2] end end
+    -- 40 of your skins (with quantities) vs estimate weight 30
     own.s, own.ss = 40, 40
     own.si = { [2318] = 40 }
     own.sq = { [2318] = 60, [249427] = 2 }
@@ -309,8 +335,17 @@ test("skinning: Pristine Leather for beasts 10-26, own skins with quantities rep
     local mine = ns.DS:GetMob(3245)
     local leather, pl
     for _, e in ipairs(mine.skin) do if e[1] == 2318 then leather = e[2] elseif e[1] == 249427 then pl = e[2] end end
-    assertTrue(math.abs(leather - 1.5) < 1e-6 and math.abs(pl - 0.05) < 1e-6 and mine.skinSrc:find("my data"), "own skins")
-    own.s, own.ss, own.si, own.sq = 1, nil, { [2318] = 1 }, nil
+    local w = 40 / 70
+    assertTrue(math.abs(leather - (w * 1.5 + (1 - w) * baseLeather)) < 1e-6, "leather blended " .. leather)
+    assertTrue(math.abs(pl - (w * 0.05 + (1 - w) * 0.029)) < 1e-6 and mine.skinSrc:find("my data"), "pristine blended " .. pl)
+    -- Bountiful Harvest rank 5 doubles the Scarce estimate
+    own.s, own.ss = 0, nil
+    ns.settings.harvestRank = 5
+    ns.DS:InvalidateMobs()
+    for _, e in ipairs(ns.DS:GetMob(3245).skin) do if e[1] == 249427 then pl = e[2] end end
+    assertTrue(math.abs(pl - 0.058) < 1e-6, "rank 5: 2 x 2.9% = " .. pl)
+    ns.settings.harvestRank = 0
+    own.s, own.ss, own.si, own.sq = keep[1], keep[2], keep[3], keep[4]
     ns.DS:InvalidateMobs()
 end)
 
@@ -732,12 +767,12 @@ test("risk: gank by ruleset/zone/settlements, death, hyperspawn, deaths learned,
     ns.Main:Toggle("farm")
     ns.Main:SelectTabByKey("combo")
     ns.Main.frame:Hide()
-    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error") and not tostring(l):find("error"), tostring(l)) end
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error") and not tostring(l):find(" error:"), tostring(l)) end
     print(string.format("       risk: Elwynn %s (%.0f) · STV by Grom'gol %s (%.0f: gank %.0f, death %.0f, hyper %.0f)", elwynn.label, elwynn.score,
         stvCamp.label, stvCamp.score, stvCamp.gank, stvCamp.death, stvCamp.hyper))
 end)
 
-test("settings migration to v5 (route only, measured times, TSM, seeded yields)", function()
+test("settings migration to v6 (route only, measured times, TSM, seeded yields, spawn data)", function()
     local savedDB, savedBackup = ForagerDB, ForagerBackupDB
     ForagerBackupDB = nil
     ForagerDB = { version = 2, settings = { worldNodes = "goal", minimapNodes = "goal", areaAlpha = 0.25, routeAlpha = 0.9, pinScale = 1.3,
@@ -746,7 +781,8 @@ test("settings migration to v5 (route only, measured times, TSM, seeded yields)"
         nodes = { [1429] = { a = { t = 1, x = 0.5, y = 0.5 }, b = { t = 34, c = 6, y = { [2770] = 9, [249391] = 1 } } } } }
     ns:InitDB()
     local st = ns.settings
-    assertTrue(ns.db.version == 5 and not ns.safeMode, "migrated")
+    assertTrue(ns.db.version == 6 and not ns.safeMode, "migrated")
+    assertTrue(st.spawnData == true and st.harvestRank == 0 and st.netGold and st.calibrate, "2.0 settings")
     assertTrue(st.gatherSeconds == 1, "flat gather seconds become extra seconds per node")
     assertTrue(table.concat(st.priceSources, ",") == "Auctionator,AuctionTrends,TSM,Vendor", "TSM before vendor")
     local seeded = ns.db.learn.nodes[34]
@@ -756,7 +792,7 @@ test("settings migration to v5 (route only, measured times, TSM, seeded yields)"
     assertTrue(st.areaAlpha == 0.12 and st.routeAlpha == 0.8, "styles")
     ForagerDB, ForagerBackupDB = savedDB, savedBackup
     ns:InitDB()
-    assertTrue(ns.db.version == 5, "restored")
+    assertTrue(ns.db.version == 6, "restored")
 end)
 
 test("caves: names, learning, overlay areas and finder filter", function()
@@ -870,6 +906,307 @@ test("logout writes backup", function()
     ForagerBackupDB = nil
     M.Fire("PLAYER_LOGOUT")
     assertTrue(type(ForagerBackupDB) == "table" and ForagerBackupDB.size > 0)
+end)
+
+test("spawn data: live share per zone/type, respawn per mob, flat share when off", function()
+    local copper = ns.NodeTypes[34]
+    local z = ns.Zones[1429]
+    local want = (z.shares and z.shares[34]) or copper.share
+    assertTrue(want and want > 0 and want < 1, "copper has spawn-pool share")
+    assertTrue(math.abs(ns.DS:LiveShare(copper, 1429) - want) < 1e-9, "zone share used")
+    assertTrue(ns.NodeTypes[1].respawn and ns.NodeTypes[1].respawn > 0, "node respawn")
+    local m = ns.DS:GetMob(6) -- Kobold Vermin: 3 min respawn in CMaNGOS
+    assertTrue(m.respawn == 180 and ns.DS:MobRespawn(m, 300) == 180, "mob respawn " .. tostring(m.respawn))
+    ns.settings.spawnData = false
+    assertTrue(ns.DS:LiveShare(copper, 1429) == ns.settings.activeFraction and ns.DS:MobRespawn(m, 300) == 300, "off: flat")
+    ns.settings.spawnData = true
+    local res = ns.Finder:Run({ goal = "ore", zones = { 1426 }, perZone = 1 })
+    local r = res[1]
+    assertTrue(r and r.why:find("live per loop"), "ore result")
+end)
+
+test("fights: seconds per kill and downtime measured, blended into kills per hour", function()
+    local f = ns.Learn.Store().fight
+    f.n, f.f, f.dn, f.d = 0, 0, 0, 0
+    local function fightOnce(id, secs, gap)
+        M.Fire("PLAYER_REGEN_DISABLED")
+        M.now = M.now + secs
+        M.loot = { { link = "|Hitem:2589::|h[Linen Cloth]|h", qty = 1, sources = { "Creature-0-1-0-1-3245-0F" .. id, 1 } } }
+        M.Fire("LOOT_READY") M.Fire("LOOT_CLOSED")
+        M.Fire("PLAYER_REGEN_ENABLED")
+        M.RunTimers(31)
+        M.now = M.now + gap
+    end
+    for i = 1, 40 do fightOnce(i, 20, 10) end
+    assertTrue(math.abs(f.n - 40) < 0.01 and math.abs(f.f / f.n - 20) < 0.5, "fight seconds per kill " .. f.f / math.max(1, f.n))
+    assertTrue(f.dn >= 38 and math.abs(f.d / f.dn - 41) < 2, "downtime between fights " .. (f.d / math.max(1, f.dn)))
+    local kph, src = ns.Learn:KillsPerHour()
+    local own = 3600 / (f.f / f.n + f.d / f.dn)
+    local w = f.dn / (f.dn + 30)
+    assertTrue(math.abs(kph - (w * own + (1 - w) * ns.settings.killsPerHour)) < 0.01, "blend " .. kph .. " " .. src)
+    local ks = ns.Learn:KillSeconds()
+    assertTrue(ks < ns.settings.comboKillSeconds, "seconds per kill moves toward yours " .. ks)
+    f.n, f.f, f.dn, f.d = 0, 0, 0, 0
+end)
+
+test("travel speed measured on foot and mounted; idle/AFK pauses the session clock", function()
+    local sp = ns.Learn.Store().speed
+    sp.foot, sp.mount = nil, nil
+    M.speed, M.mounted = 11.2, true
+    for _ = 1, 35 do ns.Capture:Tick() end
+    assertTrue(math.abs((ns.Learn:Speed(true)) - 11.2) < 0.01 and not ns.Learn:Speed(false), "mounted speed")
+    local lvl = M.level
+    M.level = 45
+    assertTrue(math.abs(ns.Player:Speed() - 11.2) < 0.01, "route timing uses measured mount speed")
+    M.level = lvl
+    M.speed, M.mounted = 0, false
+    -- session clock: active time only
+    ns.Capture:ResetSession()
+    local sess = ns.Capture.session
+    ns.Capture:AddValue(1000, nil, 0)
+    ns.Capture:Activity()
+    M.now = M.now + 2 ns.Capture:Tick()
+    M.now = M.now + 2 ns.Capture:Tick()
+    local a1 = sess.active
+    assertTrue(a1 >= 3.9, "active " .. a1)
+    M.afk = true
+    M.now = M.now + 2 ns.Capture:Tick()
+    assertTrue(sess.active == a1 and sess.paused, "AFK pauses")
+    M.afk = false
+    M.now = M.now + 400 ns.Capture:Tick() -- long gap without activity: idle
+    M.now = M.now + 2 ns.Capture:Tick()
+    assertTrue(sess.active == a1, "idle pauses")
+    ns.Capture:ResetSession()
+    sp.foot, sp.mount = nil, nil
+end)
+
+test("net gold: AH cut on AH-priced items, repairs per kill, calibration from farm sessions", function()
+    local rep = ns.Learn.Store().repair
+    rep.c, rep.k = 0, 0
+    -- a repair after 100 kills costing 50s
+    ns.db.stats.repairMark = ns.db.stats.kills or 0
+    ns.db.stats.kills = (ns.db.stats.kills or 0) + 100
+    M.repairCost = 5000
+    M.Fire("MERCHANT_SHOW")
+    M.repairCost = 0
+    M.Fire("UPDATE_INVENTORY_DURABILITY")
+    M.Fire("MERCHANT_CLOSED")
+    local rpk, k = ns.Learn:RepairPerKill()
+    assertTrue(k == 100 and math.abs(rpk - 50) < 1e-9, "repair per kill " .. rpk)
+    -- an AH-priced item (Auctionator) and a vendor-priced one
+    _G.Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(_, id) if id == 2589 then return 100 end end } } }
+    ns.Prices:Flush()
+    local r = { uiMap = 1429, goal = "cloth", source = "mob", mode = "gold", rect = { 0.1, 0.1, 0.2, 0.2 }, unitsPerHour = 60,
+        perHour = 6000 + 3000, items = { { id = 2589, perHour = 60, value = 6000 }, { coin = true, perHour = 60, value = 3000 } } }
+    ns.Net:Apply(r)
+    assertTrue(r.estGross == 9000 and math.abs(r.ahCut - 300) < 1e-9 and math.abs(r.repairs - 3000) < 1e-9, "cut and repairs")
+    assertTrue(math.abs(r.perHour - (9000 - 300 - 3000)) < 1e-9 and r.items[1].value == 5700, "net " .. r.perHour)
+    -- calibration: 2 h at a spot that made 80% of its estimate
+    ns.Learn.Store().calib = {}
+    ns.Learn:AddFarm(ns.Learn.FarmKey(r), ns.Learn.FarmGroup(r), 9000, 7200, 2)
+    local f, h, src = ns.Learn:Calibration(ns.Learn.FarmKey(r), ns.Learn.FarmGroup(r))
+    assertTrue(src == "spot" and math.abs(f - (0.8 * 2 + 1) / 3) < 1e-9 and h == 2, "calibration " .. f)
+    local r2 = { uiMap = 1429, goal = "cloth", source = "mob", mode = "gold", rect = r.rect, unitsPerHour = 60, perHour = 9000,
+        items = { { id = 2589, perHour = 60, value = 6000 }, { coin = true, perHour = 60, value = 3000 } } }
+    ns.Net:Apply(r2)
+    assertTrue(r2.calib and math.abs(r2.perHour - (9000 * f - 6000 * f * 0.05 - 3000)) < 1e-6, "calibrated net " .. r2.perHour)
+    assertTrue(#ns.Net:Lines(r2) >= 4, "explained")
+    -- another cloth spot uses the group factor once there is an hour
+    local f2, _, src2 = ns.Learn:Calibration("other", ns.Learn.FarmGroup(r))
+    assertTrue(src2 == "type" and math.abs(f2 - f) < 1e-9, "group calibration")
+    -- farm session flow: 10+ active minutes books a calibration entry
+    ns.Learn.Store().calib = {}
+    local best = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })[1]
+    ns.Route:Start(best)
+    local sess = ns.Capture.session
+    assertTrue(sess.farm == ns.Learn.FarmKey(best) and sess.est and sess.est > 0, "session tied to the farm")
+    sess.active, sess.value = 700, 5000
+    ns.Route:Stop()
+    assertTrue(ns.Learn.Store().calib[ns.Learn.FarmKey(best)], "booked")
+    ns.Learn.Store().calib = {}
+    rep.c, rep.k = 0, 0
+    _G.Auctionator = nil
+    ns.Prices:Flush()
+end)
+
+test("tracking: ready check, one-click fix, herb/ore switcher, re-track after death, tools", function()
+    M.skills = { { "Herbalism", 50, 75, 182 }, { "Mining", 60, 75, 186 }, { "Skinning", 40, 75, 393 } }
+    _G.GetProfessions = function() return 1, 2, 3, nil, nil end
+    ns.Player:RefreshSkills()
+    for _, t in ipairs(M.tracking) do t.active = false end
+    M.bags = {}
+    local r = { source = "combo", gather = "both", killFor = "skin", uiMap = 1429, route = { points = {} }, rect = { 0.1, 0.1, 0.2, 0.2 }, goal = "combo:both" }
+    local issues = ns.Tracking:Issues(r)
+    local text = ""
+    for _, i in ipairs(issues) do text = text .. i.text .. ";" end
+    assertTrue(text:find("Find Herbs is off") and text:find("Mining Pick") and text:find("Skinning Knife"), text)
+    issues[1].fix()
+    assertTrue(ns.Tracking:Active() == "herb", "fix turned Find Herbs on")
+    -- tools in bags (a Keen Skinning Knife counts by name)
+    M.bags = { 2901, 999001 }
+    M.Fire("BAG_UPDATE_DELAYED")
+    assertTrue(#ns.Tracking:Issues(r) == 0, "ready")
+    -- switcher flips only while moving, out of combat, on a herb + ore route
+    ns.Route.active = { result = r, route = { points = {} }, uiMap = 1429, index = 1, loops = 0, visited = 0, cool = {} }
+    ns.Tracking:SwitchTick()
+    assertTrue(ns.Tracking:Active() == "herb", "standing still: no flip")
+    M.speed = 7
+    ns.Tracking:SwitchTick()
+    assertTrue(ns.Tracking:Active() == "ore", "moving: flipped to minerals")
+    M.inCombat = true
+    ns.Tracking:SwitchTick()
+    assertTrue(ns.Tracking:Active() == "ore", "combat: no flip")
+    M.inCombat, M.speed = false, 0
+    ns.Route.active = nil
+    -- dying clears tracking; it comes back when alive
+    M.Fire("MINIMAP_UPDATE_TRACKING")
+    M.Fire("PLAYER_DEAD")
+    for _, t in ipairs(M.tracking) do t.active = false end
+    M.dead = true
+    M.Fire("PLAYER_ALIVE")
+    M.RunTimers(2)
+    assertTrue(ns.Tracking:Active() == nil, "still a ghost: nothing yet")
+    M.dead = false
+    M.Fire("PLAYER_UNGHOST")
+    M.RunTimers(2)
+    assertTrue(ns.Tracking:Active() == "ore", "re-tracked after death")
+    M.skills = { { "Herbalism", 50, 75, 182 }, { "Skinning", 40, 75, 393 } }
+    _G.GetProfessions = function() return 1, 2, nil, nil, nil end
+    ns.Player:RefreshSkills()
+    M.bags = {}
+end)
+
+test("route: stops you gathered cool down for the node's respawn and are skipped", function()
+    local r = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })[1]
+    ns.Route:Start(r)
+    local a = ns.Route.active
+    local n = #a.route.points
+    assertTrue(n >= 3, "route")
+    local i = a.index
+    local p = a.route.points[i]
+    ns:Fire("FORAGER_NODE_GATHERED", 1429, p.x, p.y, p.t)
+    assertTrue(ns.Route:Cooling(i) and ns.Route:CoolingCount() >= 1, "cooling")
+    M.pos = { 0.99, 0.99 }
+    ns.Route:Update()
+    assertTrue(a.index ~= i, "cooling stop skipped")
+    M.now = M.now + 4000
+    assertTrue(not ns.Route:Cooling(i), "respawned")
+    ns.Route:Stop()
+    M.pos = { 0.40, 0.60 }
+end)
+
+test("hotfix notes, Hardcore profile, herb seeds, error log, pruning", function()
+    local stv = ns.Finder:Run({ goal = "gold", zones = { 1434 }, perZone = 1, anyLevel = true })
+    assertTrue(stv[1] and stv[1].note and stv[1].note:find("Hotfix"), "STV hotfix note")
+    -- Hardcore: stricter Realistic
+    ns.Risk.hc = nil
+    M.hardcore = true
+    assertTrue(ns.Risk:IsHardcore() and ns.Risk:Profile().above == 1, "hardcore profile")
+    assertTrue(ns.Risk.TooHard({ rank = 0, maxLevel = M.level + 2 }, M.level), "level + 2 too hard in Hardcore")
+    M.hardcore = false
+    ns.Risk.hc = nil
+    assertTrue(not ns.Risk.TooHard({ rank = 0, maxLevel = M.level + 2 }, M.level), "fine on normal realms")
+    -- seeds: known items with vendor prices, tiers resolved to herb names
+    assertTrue(ns.DS:ItemVendor(268418) == 115 and ns.DS:ItemName(268415):find("Herb Seeds"), "seed items")
+    assertTrue(ns.HerbSeeds[1].from.Peacebloom and ns.HerbSeeds[1].from.Silverleaf and ns.HerbSeeds[2].from.Briarthorn, "seed tiers")
+    local found = false
+    for _, s2 in ipairs(ns.Finder:Suggest("herb seeds", 20)) do if s2.id == 268416 then found = true end end
+    assertTrue(found, "seeds are searchable")
+    -- error log: same message counted once
+    ns.db.errors = {}
+    ns:Error("x", "boom") ns:Error("x", "boom")
+    assertTrue(#ns.db.errors == 1 and ns.db.errors[1].n == 2, "deduped")
+    ns.Slash("errors")
+    ns.Slash("errors clear")
+    assertTrue(#ns.db.errors == 0, "cleared")
+    -- pruning: empty mobs and stale shared nodes go
+    ns.db.mobs[999999] = {}
+    ns.db.shared[1429] = ns.db.shared[1429] or {}
+    ns.db.shared[1429]["0a00a0"] = { t = 1, c = 1, l = time() - 100 * 86400 }
+    local removed = ns:Prune()
+    assertTrue(removed >= 2 and not ns.db.mobs[999999] and not (ns.db.shared[1429] and ns.db.shared[1429]["0a00a0"]), "pruned " .. removed)
+end)
+
+test("time-sliced jobs and the result cache", function()
+    local got
+    ns.RunJob("t", function() for _ = 1, 3 do ns.Yield() end return 42 end, function(v) got = v end)
+    ns.DrainJobs()
+    assertTrue(got == 42, "job result")
+    local o1 = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })
+    local o2 = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })
+    assertTrue(o1 == o2, "cache hit")
+    ns.Touch()
+    local o3 = ns.Finder:Run({ goal = "herb", zones = { 1429 }, perZone = 1 })
+    assertTrue(o3 ~= o1, "new data: searched again")
+    ns.DS:Flush()
+    local nz, mz, mc = ns.DS:CacheSizes()
+    assertTrue(nz == 0 and mz == 0 and mc == 0, "flushed")
+end)
+
+test("item tooltips: best spot in the background, Alt+Shift+click opens the farm", function()
+    local post = M.postCalls[0]
+    assertTrue(post, "item post-call registered")
+    local lines = {}
+    local tt = GameTooltip
+    local add = tt.AddLine
+    tt.AddLine = function(self, l) lines[#lines + 1] = l end
+    GameTooltip._shown = true
+    post(tt, { id = 2447 }) -- Peacebloom
+    assertTrue(#lines >= 1 and lines[#lines]:find("Alt%+Shift"), "hint line")
+    M.RunTimers(1)
+    ns.DrainJobs()
+    lines = {}
+    post(tt, { id = 2447 })
+    local any = false
+    for _, l in ipairs(lines) do if l:find("best spot") then any = true end end
+    assertTrue(any, "best spot shown: " .. table.concat(lines, " | "))
+    lines = {}
+    post(tt, { id = 6948 }) -- Hearthstone: not farmable
+    assertTrue(#lines == 0, "no lines on items Forager can't farm")
+    tt.AddLine = add
+    M.alt, M.shift = true, true
+    HandleModifiedItemClick("|cffffffff|Hitem:2770::::::::|h[Copper Ore]|h|r")
+    M.alt, M.shift = false, false
+    assertTrue(ns.char.goal == "item:2770" and ns.Main.frame:IsShown(), "farm tab on the item")
+    ns.Main.frame:Hide()
+    ns.char.goal = nil
+end)
+
+test("self-test, settings pages and localisation tables", function()
+    local fails, rows = ns.SelfTest()
+    assertTrue(fails == 0, table.concat(rows, "\n"))
+    ns.Main:Toggle("settings")
+    ns.Main.frame:Hide()
+    for _, l in ipairs(M.printed) do assertTrue(not tostring(l):find("UI error"), tostring(l)) end
+    assertTrue(ns.L["Farm"] == "Farm", "English falls back to the key")
+    for loc, t in pairs(ns.LocaleTables) do
+        local n = 0
+        for k, v in pairs(t) do
+            assertTrue(type(k) == "string" and type(v) == "string" and v ~= "", loc .. " " .. tostring(k))
+            -- format strings keep their placeholders
+            local _, a = k:gsub("%%[ds%.%d]+", "")
+            local _, b = v:gsub("%%[ds%.%d]+", "")
+            assertTrue(a == b, loc .. " placeholders: " .. k)
+            n = n + 1
+        end
+        assertTrue(n >= 60, loc .. " has " .. n .. " strings")
+    end
+end)
+
+test("memory: searches stay within budget, caches are capped", function()
+    collectgarbage("collect")
+    local base = collectgarbage("count")
+    local t0 = os.clock()
+    for _, g in ipairs({ "herb", "ore", "skin", "cloth", "leather" }) do ns.Finder:Run({ goal = g, perZone = 2 }) end
+    ns.Combo:Run({ gather = "both" })
+    local secs = os.clock() - t0
+    collectgarbage("collect")
+    local after = collectgarbage("count")
+    local nz, mz, mc = ns.DS:CacheSizes()
+    print(string.format("       5 searches + gather/kill: %.0f ms, retained %.0f KB (node zones %d, mob zones %d, mobs %d)",
+        secs * 1000, after - base, nz, mz, mc))
+    assertTrue(nz <= ns.DS.CAP_NODE_ZONES and mz <= ns.DS.CAP_MOB_ZONES and mc <= ns.DS.CAP_MOBS, "caps")
+    assertTrue(after - base < 12000, "retained memory " .. (after - base) .. " KB")
 end)
 
 M.RunTimers(10)

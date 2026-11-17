@@ -253,7 +253,7 @@ function Finder:MobResult(npcID, uiMap)
     end
     local rect = { math.max(0, x1 - 0.015), math.max(0, y1 - 0.015), math.min(1, x2 + 0.015), math.min(1, y2 + 0.015) }
     local v, parts = Finder:MobValue(m, "gold", skills, P:Level())
-    local kph = ns.settings.killsPerHour * math.min(1, #camp / 12) * levelFactor(m, P:Level(), true)
+    local kph = ns.Learn:KillsPerHour() * math.min(1, #camp / 12) * levelFactor(m, P:Level(), true)
     local items = {}
     for _, pa in ipairs(parts) do
         items[#items + 1] = { id = pa.id, greens = pa.greens, coin = pa.coin, perHour = pa.p * kph, value = pa.value * kph }
@@ -265,7 +265,7 @@ function Finder:MobResult(npcID, uiMap)
         route = ns.Route:Build(uiMap, ns.Route:Clusters(camp, 10), 10),
         perHour = v * kph, unitsPerHour = kph, unitLabel = "kills/h", perUnit = v, count = #camp,
         mobs = { { npc = npcID, n = #camp, m = m, perKill = v, kills = kph } }, minLevel = m.minLevel, maxLevel = m.maxLevel,
-        items = items, zoneName = zone.name, zoneMin = zone.min, zoneMax = zone.max,
+        items = items, zoneName = DS:ZoneName(uiMap), zoneMin = zone.min, zoneMax = zone.max, note = ns.HotfixNotes[uiMap],
         why = string.format("%s camp: %d spawns, ~%.0f kills/h", m.name, #camp, kph), confidence = "Classic estimate",
     }
     r.loopSec = r.route.length / P:Speed()
@@ -284,7 +284,7 @@ local function zoneCandidates(opts)
     for id, z in pairs(ns.Zones) do
         local tooHigh = z.min > (opts.level or 1) + 5 and not ns.settings.showDangerous and not opts.anyLevel
         -- Realistic: a zone whose weakest mobs are already orange or worse has no realistic spot
-        if opts.realistic and z.min > (opts.level or 1) + ns.Risk.REALISTIC.above then tooHigh = true end
+        if opts.realistic and z.min > (opts.level or 1) + ns.Risk:Profile().above then tooHigh = true end
         local noCaves = opts.location == "cave" and not ns.Caves:ZoneHasCaves(id)
         if z.faction ~= "S" and not tooHigh and not noCaves and (opts.includeEnemy or z.faction == "C" or z.faction == opts.faction) then
             list[#list + 1] = id
@@ -308,7 +308,6 @@ function Finder.YieldSource(byType)
 end
 
 local function evalNodes(uiMap, goal, opts, out)
-    local s = ns.settings
     local itemID = goal.item
     local kind = goal.prof
     local have = kind and opts.skills[kind]
@@ -334,9 +333,12 @@ local function evalNodes(uiMap, goal, opts, out)
         local cx, cy = cellOf(pt.x, pt.y)
         local idx = cy * GRID + cx
         if w and w > 0 and not (unsafe and unsafe[idx]) and allowed(opts, uiMap, pt.x, pt.y) then
+            -- weight by the chance this spawn point holds a live node (spawn pools)
+            local a = DS:LiveShare(t, uiMap)
+            w = w * a
             grid[idx] = grid[idx] + w
             cellPts[idx] = cellPts[idx] or {}
-            table.insert(cellPts[idx], { x = pt.x, y = pt.y, w = w, t = pt.t })
+            table.insert(cellPts[idx], { x = pt.x, y = pt.y, w = w, t = pt.t, a = a })
             minSkill = math.min(minSkill or 999, t.skill or 0)
         end
     end
@@ -347,22 +349,25 @@ local function evalNodes(uiMap, goal, opts, out)
         local cx, cy, sum = bestWindow(grid, W, picked)
         if sum <= 0 then break end
         picked[#picked + 1] = { cx, cy }
-        local pts, wsum, byType = {}, 0, {}
+        local pts, wsum, byType, liveBy = {}, 0, {}, {}
         for yy = cy, cy + W - 1 do
             for xx = cx, cx + W - 1 do
                 for _, p in ipairs(cellPts[yy * GRID + xx] or {}) do
                     pts[#pts + 1] = p
                     wsum = wsum + p.w
                     byType[p.t] = (byType[p.t] or 0) + 1
+                    liveBy[p.t] = (liveBy[p.t] or 0) + p.a
                 end
             end
         end
         local n = #pts
         local route = ns.Route:Build(uiMap, pts, 40)
-        local active = n * s.activeFraction
-        -- time at nodes: casts x gathers per node (+ loot, + extra) per type, measured once you have data
-        local gatherSec = 0
-        for tk, c in pairs(byType) do gatherSec = gatherSec + c * s.activeFraction * ns.Learn:NodeInfo(DS:GetType(tk)).secs end
+        -- live nodes per loop = sum of each point's live share; time at nodes: casts x gathers (+ loot, + extra)
+        local active, gatherSec = 0, 0
+        for tk, a in pairs(liveBy) do
+            active = active + a
+            gatherSec = gatherSec + a * ns.Learn:NodeInfo(DS:GetType(tk)).secs
+        end
         local loopSec = route.length / P:Speed() + gatherSec
         local loopsPerHour = 3600 / math.max(60, loopSec)
         local nodesPerHour = active * loopsPerHour
@@ -371,7 +376,7 @@ local function evalNodes(uiMap, goal, opts, out)
         for tk, c in pairs(byType) do
             mix[#mix + 1] = { t = tk, n = c }
             local t = DS:GetType(tk)
-            local share = nodesPerHour * c / n
+            local share = liveBy[tk] * loopsPerHour
             for _, y in ipairs(ns.Learn:NodeInfo(t).perNode) do
                 if not itemID or y[1] == itemID then
                     local e = items[y[1]] or { id = y[1], perHour = 0, value = 0 }
@@ -387,7 +392,7 @@ local function evalNodes(uiMap, goal, opts, out)
         table.sort(list, function(a, b) return a.value > b.value or (a.value == b.value and a.perHour > b.perHour) end)
         table.sort(mix, function(a, b) return a.n > b.n end)
         local perHour
-        if opts.mode == "skill" and not itemID then perHour = (wsum / n) * nodesPerHour else perHour = gold end
+        if opts.mode == "skill" and not itemID then perHour = wsum * loopsPerHour else perHour = gold end
         local rect = { cx / GRID, cy / GRID, (cx + W) / GRID, (cy + W) / GRID }
         out[#out + 1] = {
             uiMap = uiMap, goal = goal.key, mode = (itemID and "gold") or opts.mode, rank = rank, source = "node",
@@ -463,13 +468,20 @@ local function evalMobs(uiMap, goal, opts, out)
             end
         end
         local n = #pts
-        local density = math.min(1, n / 25)
-        local kph = s.killsPerHour * density
+        -- spawns that are up often enough to pull from: slow respawns (rares, 10+ min) count for less
+        local eff, effBy = 0, {}
+        for npc, c in pairs(perMob) do
+            local r = c * math.min(1, 300 / math.max(30, DS:MobRespawn(mobsSeen[npc].m, 300)))
+            effBy[npc] = r
+            eff = eff + r
+        end
+        local density = math.min(1, eff / 25)
+        local kph = ns.Learn:KillsPerHour() * density
         local mobs, questOverlap, items, gold, skillups = {}, {}, {}, 0, 0
         for npc, c in pairs(perMob) do
             local e = mobsSeen[npc]
             local mm = e.m
-            local killsHere = kph * c / n * e.lf
+            local killsHere = kph * effBy[npc] / math.max(eff, 1e-6) * e.lf
             local v, parts = Finder:MobValue(mm, goal.key, opts.skills, opts.level)
             mobs[#mobs + 1] = { npc = npc, n = c, m = mm, perKill = v, kills = killsHere }
             gold = gold + v * killsHere
@@ -519,13 +531,11 @@ local function evalFish(uiMap, goal, opts, out)
         v = v + price(id) * perCatch
     end
     local own = ns.db.fish[uiMap]
-    local confidence = "Classic estimate"
-    if own and own.casts >= s.minSamples then
-        for id, q in pairs(own.items) do add(id, q / own.casts) end
-        confidence = "My data (n=" .. own.casts .. ")"
-    else
-        for i = 2, #f do add(f[i][1], f[i][2]) end
-    end
+    local prior = {}
+    for i = 2, #f do prior[#prior + 1] = { f[i][1], f[i][2] } end
+    local n = own and own.casts or 0
+    for _, e in ipairs((ns.Learn:BlendList(prior, own and own.items, n))) do add(e[1], e[2]) end
+    local confidence = n >= s.minSamples and ("My data (n=" .. n .. ")") or (n > 0 and ("Classic + yours (n=" .. n .. ")") or "Classic estimate")
     if #items == 0 then return end
     table.sort(items, function(a, b) return a.value > b.value or (a.value == b.value and a.perHour > b.perHour) end)
     local skillMode = opts.mode == "skill" and not itemID
@@ -543,8 +553,26 @@ end
 -------------------------------------------------------------------------------
 -- public
 -------------------------------------------------------------------------------
+local cache = {} -- recent searches: { key, results, last } (newest first, 4 kept)
+function Finder:FlushCache() wipe(cache) end
+
 --- opts: goal, mode, zones, level, faction, skills, perZone, questing, location, includeEnemy
 function Finder:Run(opts)
+    local key = ns.OptsKey(opts, "finder")
+    for i, c in ipairs(cache) do
+        if c.key == key then
+            table.insert(cache, 1, table.remove(cache, i))
+            Finder.last = c.last
+            return c.results
+        end
+    end
+    local out = Finder:Search(opts)
+    table.insert(cache, 1, { key = key, results = out, last = Finder.last })
+    while #cache > 4 do table.remove(cache) end
+    return out
+end
+
+function Finder:Search(opts)
     DS:Load()
     opts = opts or {}
     local goal = Finder:GoalInfo(opts.goal or "herb")
@@ -565,7 +593,9 @@ function Finder:Run(opts)
     local want = opts.perZone or 1
     local hidden = opts.realistic and { n = 0, reasons = {} } or nil
     if opts.realistic then opts.perZone = want * 3 end
-    for _, uiMap in ipairs(zoneCandidates(opts)) do
+    local cands = zoneCandidates(opts)
+    for ci, uiMap in ipairs(cands) do
+        ns.Async.progress = ci / #cands
         local zone = ns.Zones[uiMap]
         local before = #out
         if goal.kind == "node" then evalNodes(uiMap, goal, opts, out)
@@ -578,8 +608,9 @@ function Finder:Run(opts)
         end
         for i = before + 1, #out do
             local r = out[i]
-            r.zoneName = zone.name
+            r.zoneName = DS:ZoneName(uiMap)
             r.zoneMin, r.zoneMax = zone.min, zone.max
+            r.note = ns.HotfixNotes[uiMap]
             r.risk, r.riskLevel = riskFor(zone, opts.faction)
             nameArea(r)
             ns.Risk:Assess(r)
@@ -600,8 +631,10 @@ function Finder:Run(opts)
             end
             for i = #out, j + 1, -1 do out[i] = nil end
         end
+        ns.Yield()
     end
     opts.perZone = want
+    ns.Net:ApplyAll(out)
     if opts.questing then Finder:ApplyQuesting(out, opts) end
     local byUnits = goal.kind == "item" and (ns.Prices:Get(goal.item)) == 0
     table.sort(out, function(a, b)
@@ -696,15 +729,17 @@ function Finder:Suggest(text, max)
     for _, t in pairs(ns.NodeTypes) do
         for _, y in ipairs(t.yields) do addItem(y[1], DS:ItemName(y[1])) end
     end
-    for id, sc in pairs(ns.Scarce) do addItem(id, sc.name) end
+    for id, e in pairs(ns.KnownItems) do addItem(id, DS:ItemName(id) or e[1]) end
     if ForagerData and ForagerData.items then
         for id, it in pairs(ForagerData.items) do addItem(id, it[1]) end
     end
     if #out < max and ForagerData and ForagerData.mobs then
         local n = 0
-        for id in pairs(ForagerData.mobs) do
-            local m = DS:GetMob(id)
-            if m and m.name:lower():find(text, 1, true) then
+        for id, raw in pairs(ForagerData.mobs) do
+            -- match on the raw name first: decoding every mob would fill the cache
+            local name = raw:match("^([^|]*)")
+            local m = name and name:lower():find(text, 1, true) and DS:GetMob(id)
+            if m then
                 out[#out + 1] = { kind = "mob", id = id, text = m.name .. string.format(" (%d-%d)", m.minLevel, m.maxLevel) }
                 n = n + 1
                 if n >= 4 or #out >= max then break end

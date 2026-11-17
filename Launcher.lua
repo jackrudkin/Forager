@@ -96,6 +96,8 @@ local HELP = {
     "/forage map - open the world map at your farm spot",
     "/forage caves - caves known in this zone",
     "/forage diag - diagnostics (paste this when reporting a problem)",
+    "/forage selftest - check data, game APIs, search speed and memory",
+    "/forage errors [clear] - errors Forager caught (paste these when reporting a problem)",
     "/forage quest <zone name> | current | auto | off - set questing zone",
     "/forage quest2 <zone name> | off - optional next quest hub (ranked too)",
     "/forage mode gold | skill - rank by gold/hour or skill-ups/hour",
@@ -110,8 +112,8 @@ local HELP = {
 
 local function findZone(text)
     text = text:lower()
-    for id, z in pairs(ns.Zones) do if z.name:lower() == text then return id end end
-    for id, z in pairs(ns.Zones) do if z.name:lower():find(text, 1, true) then return id end end
+    for id, z in pairs(ns.Zones) do if z.name:lower() == text or ns.DS:ZoneName(id):lower() == text then return id end end
+    for id, z in pairs(ns.Zones) do if z.name:lower():find(text, 1, true) or ns.DS:ZoneName(id):lower():find(text, 1, true) then return id end end
 end
 
 StaticPopupDialogs["FORAGER_CONFIRM_RESET"] = {
@@ -152,13 +154,22 @@ local function slash(msg)
         local cur = ns.Caves:PlayerCave()
         if cur then DEFAULT_CHAT_FRAME:AddMessage("  You are in: " .. cur) end
     elseif cmd == "diag" then ns.Diag()
+    elseif cmd == "selftest" or cmd == "test" then ns.SelfTest()
+    elseif cmd == "errors" then
+        local list = ns.db.errors or {}
+        if rest:lower() == "clear" then wipe(list) ns:Print("Error log cleared.") return end
+        if #list == 0 then ns:Print("No errors caught.") return end
+        ns:Print(#list .. " error(s), newest first:")
+        for _, e in ipairs(list) do
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("  %s v%s x%d: %s", date("%m-%d %H:%M", e.t or 0), tostring(e.v), e.n or 1, e.m))
+        end
     elseif cmd == "quest" then
         local r = rest:lower()
         if r == "off" or r == "" then ns.Quests:Set(nil, nil) ns:Print("Questing zone cleared - dedicated farming.")
         elseif r == "current" or r == "auto" then ns.Quests:Set(r == "auto" and "auto" or ns.Player:MapID(), ns.char.questZone2) ns:Print("Questing in: " .. ns.Player:ZoneName(ns.Player:MapID()))
         else
             local z = findZone(rest)
-            if z then ns.Quests:Set(z, ns.char.questZone2) ns:Print("Questing in: " .. ns.Zones[z].name) else ns:Print("Unknown zone: " .. rest) end
+            if z then ns.Quests:Set(z, ns.char.questZone2) ns:Print("Questing in: " .. ns.DS:ZoneName(z)) else ns:Print("Unknown zone: " .. rest) end
         end
     elseif cmd == "quest2" then
         local r = rest:lower()
@@ -166,7 +177,7 @@ local function slash(msg)
         elseif not ns.char.questZone then ns:Print("Set a questing zone first (/forage quest <zone>).")
         else
             local z = findZone(rest)
-            if z then ns.Quests:Set(ns.char.questZone, z) ns:Print("Next hub: " .. ns.Zones[z].name) else ns:Print("Unknown zone: " .. rest) end
+            if z then ns.Quests:Set(ns.char.questZone, z) ns:Print("Next hub: " .. ns.DS:ZoneName(z)) else ns:Print("Unknown zone: " .. rest) end
         end
     elseif cmd == "mode" then
         if rest == "gold" or rest == "skill" then ns.settings.mode = rest ns:Print("Ranking by " .. (rest == "gold" and "gold/hour" or "skill-ups/hour")) end
@@ -267,6 +278,59 @@ function ns.Diag()
     for _, l in ipairs(out) do DEFAULT_CHAT_FRAME:AddMessage(l) end
 end
 
+--- /forage selftest: data, game APIs Forager uses, a search in this zone (timed), memory.
+function ns.SelfTest()
+    local rows, fails = {}, 0
+    local function row(ok, name, detail)
+        if ok == false then fails = fails + 1 end
+        rows[#rows + 1] = string.format("  %s %s%s", ok == nil and "|cffffd100?|r" or (ok and "|cff7fd36bOK|r" or "|cffff4040FAIL|r"),
+            name, detail and ("|cff9d9d9d: " .. tostring(detail) .. "|r") or "")
+    end
+    local clock = debugprofilestop or function() return GetTime() * 1000 end
+    -- data and saved variables
+    local loaded = ns.DS:Load()
+    row(loaded, "Bundled data", loaded and (ns.DS:CountBundledNodes() .. " spawn points, " .. ns.Count(ForagerData.mobs) .. " mobs") or "Forager Data missing or disabled")
+    row(not ns.safeMode, "Saved data", string.format("v%d, %d entries%s", ns.db.version or 0, ns.DataSize(ns.db), ns.safeMode and (", SAFE MODE: " .. ns.safeMode) or ""))
+    row(#(ns.db.errors or {}) == 0, "Error log", #(ns.db.errors or {}) .. " caught (/forage errors)")
+    -- game APIs
+    local i = ns.Tracking:Find("herb") or ns.Tracking:Find("ore")
+    row(i ~= nil or not (ns.Player.skills.herb or ns.Player.skills.ore), "Tracking API", i and ("on: " .. tostring(ns.Tracking:Active() or "none")) or "no gathering tracker found")
+    row(GetUnitSpeed ~= nil, "Movement speed API")
+    row(GetRepairAllCost ~= nil, "Repair cost API")
+    row(TooltipDataProcessor ~= nil, "Tooltip API")
+    row(HandleModifiedItemClick ~= nil, "Item click hook")
+    row(nil, "Hardcore", ns.Risk:IsHardcore() and "yes (stricter Realistic)" or "no")
+    -- searches in this zone, timed
+    local m = ns.Player:MapID()
+    local zone = m and ns.Zones[m] and m
+    if zone and loaded then
+        local goal = ns.Finder:DefaultGoal()
+        local t0 = clock()
+        local ok, res = pcall(ns.Finder.Search, ns.Finder, { goal = goal, zones = { zone }, perZone = 2 })
+        row(ok, "Search " .. goal .. " here", ok and string.format("%d spots in %.0f ms", #res, clock() - t0) or res)
+        t0 = clock()
+        ok, res = pcall(ns.Combo.Search, ns.Combo, { zones = { zone }, perZone = 1 })
+        row(ok, "Gather + Kill here", ok and string.format("%d areas in %.0f ms", #res, clock() - t0) or res)
+    else
+        row(nil, "Searches", "not in a zone Forager knows")
+    end
+    row(true, "Prices", table.concat(ns.Prices:Available(), " > ") .. " · Copper Ore " .. ns.Money((ns.Prices:Get(2770))))
+    -- memory
+    if UpdateAddOnMemoryUsage and GetAddOnMemoryUsage then
+        pcall(UpdateAddOnMemoryUsage)
+        local a = GetAddOnMemoryUsage("Forager") or 0
+        local d = GetAddOnMemoryUsage("Forager_Data") or 0
+        row(a < 20000, "Memory", string.format("Forager %.1f MB, data %.1f MB", a / 1024, d / 1024))
+    end
+    local nz, mz, mc = ns.DS:CacheSizes()
+    row(true, "Caches", string.format("%d/%d zones of nodes, %d/%d zones of mobs, %d/%d mobs (emptied after 2 idle minutes)",
+        nz, ns.DS.CAP_NODE_ZONES, mz, ns.DS.CAP_MOB_ZONES, mc, ns.DS.CAP_MOBS))
+    for _, l in ipairs(ns.Learn:Measured()) do row(true, l) end
+    ns:Print(fails == 0 and "self-test passed:" or ("self-test: " .. fails .. " problem(s):"))
+    for _, l in ipairs(rows) do DEFAULT_CHAT_FRAME:AddMessage(l) end
+    return fails, rows
+end
+
 SLASH_FORAGER1, SLASH_FORAGER2 = "/forage", "/forager"
 SlashCmdList.FORAGER = slash
 ns.Slash = slash
@@ -284,6 +348,7 @@ ns:On("PLAYER_LOGIN", function()
     ns.Risk:Init()
     ns.Overlay:Init()
     ns.Tooltip:Init()
+    ns.Tracking:Init()
     createButton()
     local ldb = LibStub("LibDataBroker-1.1", true)
     if ldb then
@@ -292,6 +357,12 @@ ns:On("PLAYER_LOGIN", function()
     end
     ns:On("FORAGER_SETTINGS_CHANGED", function() if button then button:SetShown(not ns.settings.minimapHide) end end)
     ns.After(5, function() ns.Import:FirstRun() end)
+    -- memory: decoded caches are emptied when Forager has been idle (window closed, nothing searching) for 2 minutes
+    ns.lastUse = GetTime()
+    ns.Ticker(30, function()
+        local busy = (ns.Main.frame and ns.Main.frame:IsShown()) or ns.Async.jobs[1] ~= nil
+        if busy then ns.lastUse = GetTime() elseif GetTime() - ns.lastUse > 120 then ns.DS:Flush() ns.lastUse = GetTime() end
+    end)
     local learned = 0
     for _, z in pairs(ns.db.nodes) do learned = learned + ns.Count(z) end
     ns:Print(string.format("v%s loaded · %d learned nodes · %d mobs observed · backup %s · /forage",

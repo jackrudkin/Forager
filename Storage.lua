@@ -2,7 +2,7 @@
 -- auto-restore, versioned migrations and safe mode. Same approach as AuctionTrends.
 local _, ns = ...
 
-ns.DB_VERSION = 5
+ns.DB_VERSION = 6
 
 local DEFAULT_SETTINGS = {
     -- layers
@@ -28,20 +28,31 @@ local DEFAULT_SETTINGS = {
     hideInCombat = true, hideInInstances = true,
     -- finder
     mode = "gold",               -- gold | skill
-    activeFraction = 0.30,       -- share of spawn points with a live node at any moment
+    spawnData = true,            -- live share per node type/zone and respawn per mob from spawn pools
+    activeFraction = 0.30,       -- fallback share of spawn points with a live node (spawn data off/missing)
     killsPerHour = 45,
     castsPerHour = 220,
     gatherSeconds = 1,           -- extra seconds per node (dismount, walk in); casts and loot are measured
 
     speed = "auto",              -- auto | run | mount60 | mount100
     showDangerous = false,
-    minSamples = 30,             -- own data replaces Classic estimates from this sample size
+    minSamples = 30,             -- estimate weight: your data counts half at this many samples
+    harvestRank = 0,             -- Bountiful Harvest (Legacy) rank 0-5: +20% Scarce per rank
+    netGold = true,              -- gold/h after the 5% AH cut and measured repairs
+    calibrate = true,            -- scale estimates by how your farm sessions compared
+    -- farming helpers
+    trackSwitch = true,          -- flip Find Herbs / Find Minerals on herb + ore routes (moving, out of combat)
+    retrack = true,              -- turn resource tracking back on after you die
+    readyCheck = true,           -- warn when tracking is off or the Mining Pick / Skinning Knife is missing
+    coolStops = true,            -- route skips stops you gathered until they can be back
+    afkPause = true,             -- session clock pauses when AFK or idle for 3 minutes
     -- prices
     priceSources = { "AuctionTrends", "Auctionator", "TSM", "Vendor" },
     tsmPrice = "dbmarket",       -- TradeSkillMaster price string when TSM is a source
     realistic = false,           -- Realistic spots: solo-farmable at your level (Farm and Gather + Kill)
     -- tooltip
     tooltip = true, tooltipGear = true, tooltipFarm = true, tooltipSkin = true, tooltipPickpocket = true,
+    tooltipItem = true,          -- item tooltips: best spot + Alt+Shift+click to farm
     -- sharing
     shareGuild = false, shareParty = false,
     -- misc
@@ -63,7 +74,8 @@ local function defaults()
         deaths = {},     -- [uiMap][cellKey] = count (2% cells) your deaths, for the risk estimate
         names = {},      -- learned node type names for unknown types: ["i<itemID>"] = name
         stats = { items = {}, gathers = {}, kills = 0, skins = 0, zones = {}, gold = 0 },
-        learn = { nodes = {}, cast = {}, loot = {}, scarceSkin = {} }, -- your own yields, times, Scarce rates
+        learn = { nodes = {}, cast = {}, loot = {}, scarceSkin = {} }, -- your own yields, times, rates, calibration
+        errors = {},     -- recent Lua errors caught by Forager (/forage errors)
         sessions = {},   -- recent sessions summary
         chars = {},      -- [char-realm] = { questZone, questZone2, goal }
         imported = {},
@@ -138,7 +150,39 @@ local migrations = {
         ns.Learn:SeedFromNodes(db)
         db.version = 5
     end,
+    [5] = function(db)
+        -- 2.0.0: spawn-pool data replaces the flat live share; Scarce rates are normalised by
+        -- Bountiful Harvest rank (data so far counts at the rank you set first).
+        local st = db.settings or {}
+        db.settings = st
+        st.spawnData = true
+        local l = db.learn or {}
+        db.learn = l
+        for _, r in pairs(l.scarceSkin or {}) do r.m = r.n r.seed = r.n end
+        db.version = 6
+    end,
 }
+
+--- Trim SavedVariables: empty records, old shared nodes, capped logs. Returns entries removed.
+function ns:Prune(db)
+    db = db or ns.db
+    if not db then return 0 end
+    local removed, now = 0, time()
+    for _, zone in pairs(db.shared or {}) do
+        for key, rec in pairs(zone) do
+            if type(rec) ~= "table" or (rec.l and now - rec.l > 90 * 86400) then zone[key] = nil removed = removed + 1 end
+        end
+    end
+    for _, tbl in ipairs({ db.nodes or {}, db.shared or {}, db.caves or {}, db.deaths or {} }) do
+        for k, zone in pairs(tbl) do if type(zone) ~= "table" or next(zone) == nil then tbl[k] = nil removed = removed + 1 end end
+    end
+    for id, m in pairs(db.mobs or {}) do
+        if type(m) ~= "table" or ((m.k or 0) == 0 and (m.s or 0) == 0 and (m.p or 0) == 0) then db.mobs[id] = nil removed = removed + 1 end
+    end
+    while #(db.sessions or {}) > 30 do table.remove(db.sessions) removed = removed + 1 end
+    while #(db.errors or {}) > 20 do table.remove(db.errors) removed = removed + 1 end
+    return removed
+end
 
 local function sizeOf(db)
     if type(db) ~= "table" then return 0 end
@@ -175,6 +219,7 @@ function ns:InitDB()
         end
     end
     fill(db, defaults())
+    if not ns.safeMode then pcall(ns.Prune, ns, db) end
     ns.db = db
     ns.settings = db.settings
     local ck = ns.CharKey()
@@ -236,6 +281,7 @@ end
 ns:On("PLAYER_LOGOUT", function()
     if not ns.db then return end
     ns.db.meta.lastSave = time()
+    if ns.Capture then pcall(ns.Capture.FinishFarm, ns.Capture) end
     ns:SaveSession()
     ns:WriteBackup(ns.resetIntent)
 end)

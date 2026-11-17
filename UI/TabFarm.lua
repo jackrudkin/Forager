@@ -1,7 +1,7 @@
 -- Farm tab: "What do you want to farm?" search, category chips, location (caves) filter, ranked
 -- result cards and a detail panel with a map preview, loot per hour and Start farming.
 local _, ns = ...
-local UI, Main = ns.UI, ns.Main
+local UI, Main, L = ns.UI, ns.Main, ns.L
 local T = ns.Theme
 local DS, Finder = ns.DS, ns.Finder
 
@@ -233,6 +233,21 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
     d.rate:SetTextColor(T.gold[1], T.gold[2], T.gold[3])
     d.units = UI.Muted(d, "")
     d.units:SetPoint("TOPRIGHT", d.rate, "BOTTOMRIGHT", 0, -4)
+    -- hover the rate: how the gold estimate was made (calibration, AH cut, repairs)
+    d.rateTip = CreateFrame("Frame", nil, d)
+    d.rateTip:SetPoint("TOPRIGHT", -8, -6)
+    d.rateTip:SetSize(150, 34)
+    d.rateTip:EnableMouse(true)
+    d.rateTip:SetScript("OnEnter", function(self)
+        local r = state.selected
+        local lines = r and ns.Net:Lines(r) or {}
+        if #lines == 0 then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine(L["Gold per hour"], 1, 1, 1)
+        for _, l in ipairs(lines) do GameTooltip:AddDoubleLine(L[l[1]], l[2], 0.8, 0.8, 0.8, 1, 1, 1) end
+        GameTooltip:Show()
+    end)
+    d.rateTip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local preview = UI.MapPreview(d, 222, 148)
     preview:SetPoint("TOPLEFT", 12, -52)
@@ -335,6 +350,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         local units = {}
         if r.unitsPerHour then units[#units + 1] = string.format("~%.0f %s", r.unitsPerHour, r.unitLabel or "") end
         if r.loopSec and r.loopSec > 0 then units[#units + 1] = "loop " .. (SecondsToTime and SecondsToTime(r.loopSec, true) or (math.floor(r.loopSec / 60) .. " min")) end
+        if r.calib then units[#units + 1] = string.format("|cff7fd36bx%.2f|r", r.calib) end
         d.units:SetText(table.concat(units, "  ·  "))
         preview:SetResult(r)
         for i, row in ipairs(d.loot) do
@@ -378,6 +394,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
             lines[#lines + 1] = "Any open water in the zone; pools show on the minimap as you find them."
         end
         if r.poiCount and r.poiCount > 0 then lines[#lines + 1] = string.format("|cffffd100%d quest objective(s)|r inside this area", r.poiCount) end
+        if r.note then lines[#lines + 1] = "|cffffd100" .. r.note .. "|r" end
         d.extra:SetText(table.concat(lines, "\n"))
         d.why:SetText(r.why or "")
         d.risk.text:SetText(ns.Risk:Line(r) .. "  |cff9d9d9d(hover for why)|r")
@@ -408,7 +425,7 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
             table.sort(zl, function(a, b) return a.z.min < b.z.min end)
             for _, e in ipairs(zl) do
                 for _, c in ipairs(e.z.caves) do
-                    if n < 10 then lines[#lines + 1] = "  |cff9e7af2" .. c .. "|r  ·  " .. e.z.name n = n + 1 end
+                    if n < 10 then lines[#lines + 1] = "  |cff9e7af2" .. c .. "|r  ·  " .. ns.DS:ZoneName(e.id) n = n + 1 end
                 end
             end
             lines[#lines + 1] = ""
@@ -435,22 +452,36 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
         loc:Refresh()
         scope:Refresh()
         realistic:SetChecked(ns.settings.realistic and true or false)
-        local ok, res = pcall(Finder.Run, Finder, Finder:Options(Main:Goal(), ns.settings.mode))
-        if not ok then
-            ns:Print("Finder error: " .. tostring(res))
-            res = {}
-        end
-        state.results = res
-        local et = #res == 0 and emptyText() or nil
-        list:SetItems(res, et and "No results - see the panel on the right." or nil)
-        d.empty:SetText(et or "")
-        local pick = selectResult
-        if not pick and ns.Route.active then
-            for _, r in ipairs(res) do
-                if r.uiMap == ns.Route.active.uiMap and r.goal == ns.Route.active.result.goal and r.rank == ns.Route.active.result.rank then pick = r end
+        local opts = Finder:Options(Main:Goal(), ns.settings.mode)
+        local finished = false
+        -- time-sliced: long searches run a few milliseconds per frame
+        ns.RunJob("farm", function() return Finder:Run(opts) end, function(res, err)
+            finished = true
+            if err == "replaced" then return end
+            if not res then
+                ns:Print("Finder error: " .. tostring(err))
+                res = {}
             end
+            state.results = res
+            local et = #res == 0 and emptyText() or nil
+            list:SetItems(res, et and L["No results - see the panel on the right."] or nil)
+            d.empty:SetText(et or "")
+            local pick = selectResult
+            if not pick and ns.Route.active then
+                for _, r in ipairs(res) do
+                    if r.uiMap == ns.Route.active.uiMap and r.goal == ns.Route.active.result.goal and r.rank == ns.Route.active.result.rank then pick = r end
+                end
+            end
+            panel:Select(pick or res[1])
+        end, function(p)
+            list:SetItems({}, string.format(L["Searching... %d%%"], math.floor(p * 100)))
+        end)
+        if not finished then
+            state.results = {}
+            list:SetItems({}, L["Searching..."])
+            panel:Select(nil)
+            d.empty:SetText(L["Searching..."])
         end
-        panel:Select(pick or res[1])
     end
 
     local pending

@@ -103,8 +103,8 @@ function Route:Start(result)
     local route = result.route
     if not route or #route.points == 0 then
         Route.preview = nil
-        Route.active = { result = result, route = route or { points = {} }, uiMap = result.uiMap, index = 1, loops = 0, visited = 0 }
-        ns:Fire("FORAGER_ROUTE_CHANGED")
+        Route.active = { result = result, route = route or { points = {} }, uiMap = result.uiMap, index = 1, loops = 0, visited = 0, cool = {} }
+        Route:Started(result)
         return
     end
     -- rotate so the loop starts at the waypoint nearest the player
@@ -118,11 +118,20 @@ function Route:Start(result)
         end
     end
     Route.preview = nil
-    Route.active = { result = result, route = route, uiMap = result.uiMap, index = start, loops = 0, visited = 0, startIndex = start }
+    Route.active = { result = result, route = route, uiMap = result.uiMap, index = start, loops = 0, visited = 0, startIndex = start,
+        cool = {} }
+    Route:Started(result)
+end
+
+--- Common start bookkeeping: farm session, ready check.
+function Route:Started(result)
+    if ns.Capture then ns.Capture:BeginFarm(result) end
     ns:Fire("FORAGER_ROUTE_CHANGED")
+    if ns.Tracking then ns.Tracking:AnnounceIssues(result) end
 end
 
 function Route:Stop()
+    if Route.active and ns.Capture then ns.Capture:ResetSession() end
     Route.active = nil
     ns:Fire("FORAGER_ROUTE_CHANGED")
 end
@@ -151,24 +160,62 @@ function Route:Next()
     return wp, d, (a.visited % n) / n, a.loops, a.index
 end
 
---- Called periodically: advance when within 25 yd of the waypoint.
+--- Is route stop i cooling (gathered recently, can't be back yet)?
+function Route:Cooling(i)
+    local a = Route.active
+    local t = a and a.cool and a.cool[i]
+    return t ~= nil and t > GetTime()
+end
+
+--- Number of cooling stops.
+function Route:CoolingCount()
+    local a = Route.active
+    if not a or not a.cool then return 0 end
+    local n, now = 0, GetTime()
+    for i, t in pairs(a.cool) do if t > now then n = n + 1 else a.cool[i] = nil end end
+    return n
+end
+
+--- A node was gathered: the route stop on it cools down for the node type's respawn time.
+function Route:OnGathered(uiMap, x, y, typeKey)
+    local a = Route.active
+    if not a or a.uiMap ~= uiMap or not x or ns.settings.coolStops == false then return end
+    local t = ns.DS:GetType(typeKey)
+    for i, p in ipairs(a.route.points) do
+        if p.t ~= nil and P:Distance(uiMap, x, y, p.x, p.y) < 30 then
+            a.cool[i] = GetTime() + ns.Learn:Respawn(t)
+        end
+    end
+end
+
+local function advance(a)
+    local n = #a.route.points
+    a.index = a.index % n + 1
+    a.visited = a.visited + 1
+    if a.visited % n == 0 then a.loops = a.loops + 1 end
+end
+
+--- Called periodically: advance when within 25 yd of the waypoint; skip cooling stops.
 function Route:Update()
     local a = Route.active
     if not a or #a.route.points == 0 then return end
-    local _, d = Route:Next()
-    if d and d < 25 then
-        local n = #a.route.points
-        a.index = a.index % n + 1
-        a.visited = a.visited + 1
-        if a.visited % n == 0 then a.loops = a.loops + 1 end
-        ns:Fire("FORAGER_ROUTE_PROGRESS")
+    local n = #a.route.points
+    local moved = false
+    -- skip stops that can't have respawned yet (never all of them)
+    if Route:CoolingCount() < n then
+        local guard = 0
+        while Route:Cooling(a.index) and guard < n do advance(a) moved = true guard = guard + 1 end
     end
+    local _, d = Route:Next()
+    if d and d < 25 then advance(a) moved = true end
+    if moved then ns:Fire("FORAGER_ROUTE_PROGRESS") end
 end
 
 function Route:Skip()
     local a = Route.active
     if not a or #a.route.points == 0 then return end
-    a.index = a.index % #a.route.points + 1
-    a.visited = a.visited + 1
+    advance(a)
     ns:Fire("FORAGER_ROUTE_PROGRESS")
 end
+
+ns:On("FORAGER_NODE_GATHERED", function(_, uiMap, x, y, typeKey) Route:OnGathered(uiMap, x, y, typeKey) end)

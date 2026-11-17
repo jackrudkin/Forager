@@ -4,6 +4,40 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 2.0: real spawn data, numbers that learn, farming helpers
+
+**More accurate estimates**
+
+| Change | Before | Now |
+|---|---|---|
+| Live nodes per spawn point | Flat 30% everywhere | From the CMaNGOS spawn pools, per node type and per zone for ore (e.g. Copper 20%, Tin 12%, Silver 8%; Black Lotus 100%). Ore estimates were too high before |
+| Mob respawn | Flat 5:00 | Per mob from CMaNGOS (e.g. 3:00 for many low-level mobs; rares much longer, so they count for less) |
+| Your data vs estimates | Hard switch at n = 30 | Blended: with n of your samples and estimate weight k (Settings, default 30), value = (n × yours + k × estimate) ÷ (n + k). Yields, skins, drops, gear grades and fishing |
+| Kills per hour, seconds per kill | Sliders only | Measured from your fights (time in combat per kill, downtime between fights) and blended with the sliders |
+| Travel speed | 60% mount from 40 assumed | Measured on foot and mounted; used when known (100% at 60 is only assumed once measured) |
+| Gold per hour | Full item prices | After the 5% AH cut on AH-priced items and your measured repair cost per kill. Hover the rate for the breakdown |
+| Calibration | — | After 10+ active minutes farming a spot, its estimate is scaled by what you actually made there; spots of the same kind use it too once you have an hour. Stats shows each session vs its estimate |
+| Bountiful Harvest | Not counted | Settings → Estimates: your rank (Legacy perk, +20% Scarce from Mining, Herbalism and Skinning per rank). Scarce rates are stored per rank, so changing it rescales them |
+| Herb seeds | Not known | All four tiers known (IDs, vendor prices, which herbs give which tier, from QuestieDB). Rates are learned from your gathers |
+| Hotfix notes | — | Spots in zones with spawn-rate hotfixes since launch say so (e.g. STV tigers/panthers/raptors more frequent) |
+
+**Farming helpers** (Settings → Maps & farming)
+
+| Helper | What it does |
+|---|---|
+| Tracking switcher | On routes with both herbs and ore (and both professions), flips Find Herbs / Find Minerals every 4 s while you move, out of combat and not casting. Forever allows one resource tracker at a time |
+| Re-track after death | Dying clears tracking in Forever; your herb or ore tracking comes back on once you're alive |
+| Ready check | When a farm starts: tracking off, or Mining Pick / Skinning Knife not in your bags. Shown on the HUD with a one-click **Turn on** for tracking |
+| Cooling stops | The arrow skips stops you just gathered until they can have respawned (spawn data, or sooner if you've seen that node type back sooner) |
+| Session clock | Counts active time only: AFK, or 3 minutes without moving, looting or fighting, pauses it |
+| Hardcore | Detected (`C_GameRules.IsHardcoreActive`). Realistic spots turns on and gets stricter: no mob above your level + 1, no elites, death risk Low |
+
+**Item tooltips:** items you can farm show the best spot for your character (worked out in the background the first time you hover them). **Alt+Shift+click** an item link anywhere to open Farm on that item.
+
+**Smooth and light:** searches run a few milliseconds per frame with a progress line, so the game never stutters; recent results are cached. Decoded data is capped and emptied after 2 idle minutes. `/forage selftest` checks the data, the game APIs Forager uses, search speed and memory; `/forage errors` lists any errors Forager caught (kept between sessions). Saved data is trimmed of empty records and old shared nodes.
+
+**Also:** German and French for tabs, Settings, HUD and the gold breakdown, with zone names in your client's language. Settings is split into three pages. A weekly GitHub workflow rebuilds the data from the latest QuestieDB and opens a pull request when it changed.
+
 ## What's new in 1.9: item tooltips
 
 Hover any item in the Forager window to see the game's own item tooltip. Below it, Forager adds the price it uses (and where that price comes from) and what the item is worth in that spot.
@@ -178,7 +212,7 @@ Each area is scored on one loop of its route, with **time as the shared budget**
 | Part of the loop | Time | Income |
 |---|---|---|
 | Walking | route length ÷ speed | — |
-| Gathering | live nodes within reach of the route × seconds per node (casts × gathers per node + loot + extra) | node value × live share (30%) |
+| Gathering | live nodes within reach of the route × seconds per node (casts × gathers per node + loot + extra) | node value × live share (spawn pools per type and zone) |
 | Fighting | mobs killed × (seconds per kill + seconds per skin if you skin it), faster for lower-level mobs, +½ reach walked per pull | loot (drops, coin, disenchant value of greens/blues) + skins if your Skinning ≥ the mob's requirement |
 
 **Gold/hour** = (node income + mob income) × 3600 ÷ (walk + gather + fight). Shown as gathering + skins + other loot.
@@ -189,7 +223,7 @@ Each area is scored on one loop of its route, with **time as the shared budget**
 
 **Which mobs to kill:** a mob type is only worth killing when its gold per second of fighting beats the loop's current gold per second. Forager takes mob types from best to worst gold per fighting second while that holds. This is the standard best-ratio rule and gives the highest total. The rest are listed under **Skip**: they'd pay less than the time spent gathering. So a combined spot is never rated below gathering alone on the same route.
 
-**Respawns:** a mob you killed is back only after the respawn time (default 5 min). A loop shorter than that meets fewer mobs (loop time ÷ respawn); this feedback is solved by iterating.
+**Respawns:** a mob you killed is back only after its respawn time (CMaNGOS, per mob; the slider is used for mobs without data). A loop shorter than that meets fewer of them (loop time ÷ respawn); this feedback is solved by iterating.
 
 **Areas and routes:**
 - For each zone the shortlist is the best 3 windows by node value and the best 3 by node + mob value (about 800 yd; 450 in Caves & mines). Each candidate is then evaluated exactly.
@@ -203,9 +237,9 @@ Each area is scored on one loop of its route, with **time as the shared budget**
 
 The card shows the gain over the better of the two. If just killing pays more, the detail panel says so.
 
-Defaults you can change in the tab: 30 s per kill, 3 s per skin (your measured skins replace it from 10), 30 yd reach, 5 min respawn. Live share and extra seconds per node come from Settings → Finder assumptions.
+Defaults you can change in the tab: 30 s per kill (blended with your measured fights), 3 s per skin (your measured skins replace it from 10), 30 yd reach, 5 min respawn for mobs without spawn data. Extra seconds per node comes from Settings → Estimates.
 
-**Limitations:** it uses Classic spawn points and loot tables, distances are straight lines, and mobs you skip can still aggro. **Both** routes through herbs and ore, but you can only track one of them at a time.
+**Limitations:** it uses Classic spawn points and loot tables, distances are straight lines, and mobs you skip can still aggro. **Both** routes through herbs and ore; the tracking switcher flips between the two trackers while you move.
 
 ## Risk level
 
@@ -277,6 +311,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `/forage map` | Open the world map at your farm |
 | `/forage caves` | Caves in this zone, cells you've walked, whether you're in one |
 | `/forage diag` | Diagnostics to paste into a bug report |
+| `/forage selftest` | Check data, game APIs, search speed and memory |
+| `/forage errors` [`clear`] | Errors Forager caught (kept between sessions) |
 | `/forage quest <zone>` / `current` / `auto` / `off` | Set or clear the questing zone |
 | `/forage quest2 <zone>` / `off` | Optional next quest hub (ranked too) |
 | `/forage mode gold` / `skill` | Rank by gold/hour or skill-ups/hour |
@@ -292,19 +328,19 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 ## How the numbers are calculated
 
 - **Value per node** = Σ (expected count per node × price).
-  - With 30+ of your own visits to that node type (setting): your own items per visit, all items including Scarce finds.
-  - Otherwise: the node's CMaNGOS loot table × gathers per node (multi-tap ore veins), plus a Scarce item at your pooled rate once you've logged 100 gathers of the nodes that give it.
+  - Count per node = (n × your items per visit + k × CMaNGOS loot table × gathers per node) ÷ (n + k), with n your visits to that node type and k the estimate weight (default 30). Gathers per node is blended the same way.
+  - Scarce items and herb seeds: your pooled rate per gather (over every node type that gives them, from 100 gathers) × gathers per node. Scarce rates are normalised by your Bountiful Harvest rank (+20% per rank).
 - **Prices:** AuctionTrends `GetMarketValue` → Auctionator `GetAuctionPriceByItemID` → TradeSkillMaster `TSM_API.GetCustomPriceValue` (DBMarket by default) → vendor price (order set in Settings). Forager only reads them and never touches Auctionator or TSM.
 - **Area:** each zone is split into a 20 × 20 grid. Forager picks the window of cells, about 800 yards across (450 in Caves & mines), with the highest total value (or skill-up chance). Up to 2 areas per zone (4 in questing mode). In cave mode the area shrinks to the cave's spawn points.
 - **Item goals:** node areas are weighted by expected count × price of that item, mob camps by drop chance × price (by chance if the item has no price), fishing zones by catch rate. If the item has no price, results are ranked by quantity per hour.
 - **Route:** up to 40 of the best points in the area, at least 25 yd apart, in a closed loop (nearest neighbour + 2-opt). Mob routes go through up to 14 camp centres. Distances come from HereBeDragons zone sizes.
 - **Gold/hour (nodes)** = live nodes per loop × value per node × loops per hour.
-  - Live nodes = spawn points × live share (default 30%).
+  - Live nodes = Σ over spawn points of the chance the point holds a live node. CMaNGOS spawn pools: limit ÷ members × the parent pool's active chance, averaged per node type, and per zone for ore (mineral pools are per zone). Points not in a pool count 100%. With spawn data off: the flat share (default 30%).
   - Loop time = route length ÷ speed + Σ live nodes × seconds per node.
   - Seconds per node = gathers per node × (cast + loot) + extra (default 1 s). Cast is your measured average from 10 casts, else Herb Gathering 5 s / Mining 3.2 s. Loot is your measured loot-window time, else 0.
-  - Speed: Auto = running 7 yd/s below level 40, otherwise 60% mount 11.2 yd/s.
+  - Speed: Auto = your measured speed (on foot below level 40, mounted from 40), else running 7 yd/s below 40 and a 60% mount 11.2 yd/s from 40.
 - **Gold/hour (mobs)** = kills/hour × value per kill.
-  - Kills/hour = setting (default 45) × density, where density = min(1, spawns in area ÷ 25) × level factor.
+  - Kills/hour = (n × your rate + k × setting) ÷ (n + k) × density. Your rate = 3600 ÷ (seconds in combat per kill + downtime between fights under 90 s, gathering excluded). Density = min(1, Σ spawns × min(1, 300 s ÷ respawn) ÷ 25) × level factor.
   - Level factor: mobs more than 3 levels above you, and elites, are excluded unless allowed in Settings; mobs well below you count as faster kills.
   - Value per kill = Σ chance × price for the goal's items. Skinning counts only if your skill is high enough.
   - **Gold/kill** in Mobs & Drops = every drop × price + average coin + disenchant value of greens/blues + skins if you have Skinning.
@@ -316,7 +352,10 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
   - Fishing is rough: min(1, (300 − skill)/300 + 0.05) × 0.6 per catch.
   - Lockpicking: junkbox chance × colour chance. Rogue skill is assumed to be level × 5, which is the cap.
 - **Questing score** = rate × loop time ÷ (loop time + 2 × distance to nearest quest objective ÷ speed).
-- **Session gold/hour** = value of everything you looted at current prices, plus coin, ÷ session time.
+- **Net gold/hour** = gross × calibration − 5% of the AH-priced items' value − repair copper per kill × kills/hour.
+  - Calibration = (h × actual ÷ estimate + 1) ÷ (h + 1) over h hours of your farm sessions at that spot (from 15 minutes; spots of the same kind from 1 hour), limited to 0.25–3.
+  - Repairs = repair cost when you repair at a merchant ÷ kills since your last repair (from 50 kills).
+- **Session gold/hour** = value of everything you looted at current prices, plus coin, ÷ active session time (AFK and idle time excluded).
 
 ## Data sources & accuracy
 
@@ -325,16 +364,21 @@ What each number comes from, and how sure it is.
 | Data | Source | Forever-specific? |
 |---|---|---|
 | Node, mob and NPC spawn points, mob levels, NPC factions | QuestieDB Forever database. Its node and NPC tables were last updated on 11 Oct 2026; Questie's Forever coordinates are converted from Classic Era sources | Partly: Forever's new zones and nodes have few or no spawn points yet. Your gathers, your guild (sharing) and imports fill the gaps |
-| Node yields, gathers per vein, mob loot and skins | CMaNGOS classic-db (Classic) | No, so your own data replaces them at n ≥ 30 |
+| Node yields, gathers per vein, mob loot and skins | CMaNGOS classic-db (Classic) | No, so your own data is blended in (half at n = 30 by default) |
+| Live share per spawn point, node and mob respawn times | CMaNGOS classic-db spawn pools (`pool_template`, `pool_gameobject`, `pool_pool`) and `spawntimesecsmin/max` | Classic. Forever's spawn hotfixes are listed as notes; your calibration corrects the rest |
+| Herb seeds (IDs, which herbs give which tier) | QuestieDB Forever item traces; vendor prices from Forever item database pages (fallback only: the game's sell price is used once the item is cached) | Yes. Rates are learned |
+| Bountiful Harvest | Legacy perk: +20% Scarce from Mining, Herbalism and Skinning per rank, 5 ranks (Icy Veins, Warcraft Tavern, Mobalytics) | Yes |
+| Spawn-rate hotfixes | Blizzard hotfix notes (Nov 13 and earlier) | Yes, shown as notes on spots |
 | Scarce materials (IDs, vendor prices, which nodes give which) | warcraft.wiki.gg Forever herbalism/mining techniques, wowgoldfarms.com, wow-professions.com (Thorium → Pitchblende) | Yes. Drop rates for herbs and ore are unpublished, so they're learned |
 | Pristine Leather start rate | 29 per 1,000 skins of level 22–26 Barrens beasts (nerdflakes.com); beasts level 10–26 (classicwowforever.com) | One community log; your skins replace it from 100 in that band |
 | Herb skill colours | warcraft.wiki.gg Forever herb table (yellow → green moved 15 points later) | Yes |
 | Ore and skinning skill colours, skinning skill formula | warcraft.wiki.gg Forever mining/skinning techniques | Yes (same as Classic, plus the Forever skinning formula) |
 | Cast times | classicdb.ch: Herb Gathering 5 s, Mining 3.2 s | Classic. Your measured casts replace them from 10 |
 | Prices | Your AuctionTrends / Auctionator scans, TSM, vendor | Live |
-| Mob respawn | Slider (default 5:00) | Forever adjusted respawn rates for launch, especially in starting zones, and no numbers are published |
+| Kills per hour, seconds per kill, travel speed, repairs | Measured from your play | Yes |
+| AH cut and deposit | 5% cut; deposits have a 1c minimum since the Nov 17 maintenance and are returned on sale (left out) | Yes |
 
-Not changed, because no better data was found: node spawn positions (Forever reduced Poor Copper Veins in starter areas, but the new positions aren't in any open database), mob kill times (Forever raised enemy health on 2 Nov; set **Seconds per kill** to match your character), and dynamic respawn.
+Not changed, because no better data was found: node spawn positions (Forever reduced Poor Copper Veins in starter areas, but the new positions aren't in any open database) and dynamic respawn. Mob kill times are now measured (Forever raised enemy health on 2 Nov).
 
 ## Your data survives updates
 
@@ -351,7 +395,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 42 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 53 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -362,17 +406,20 @@ Not changed, because no better data was found: node spawn positions (Forever red
   - risk: ruleset detection, gank by zone/settlement/ruleset, death from levels and logged deaths, combined score, filter, UI;
   - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade;
   - Realistic spots (1.8): orange/elite mobs excluded, every kept spot passes the rules (Farm ore/skinning/gold, Gather + Kill, PvP ruleset), spots still found at level 25, setting, slash command, UI;
-  - item tooltips (1.9): game tooltip + Forager price, loot/coin/gear entries, every item hover area in Farm and Gather + Kill, search suggestions.
+  - item tooltips (1.9): game tooltip + Forager price, loot/coin/gear entries, every item hover area in Farm and Gather + Kill, search suggestions;
+  - 2.0: spawn-pool shares and mob respawns, blending (yields, skins, Bountiful Harvest rescaling), fights → kills per hour, measured speed, AFK/idle clock, AH cut, repairs per kill, calibration and farm sessions, tracking ready check / fix / switcher / re-track after death / tools in bags, cooling stops, hotfix notes, Hardcore profile, herb seeds, error log, pruning, time-sliced jobs and the result cache, item tooltip best spot and Alt+Shift+click, self-test, settings pages, translation tables, memory budget and cache caps.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
-- `tools/`: data build scripts (`build_data.py`) and instructions to regenerate `Forager_Data` from QuestieDB and CMaNGOS.
+- `tools/`: data build scripts (`build_data.py`) and instructions to regenerate `Forager_Data` from QuestieDB and CMaNGOS. The **Data update** workflow does this every Monday and opens a pull request when the data changed.
+- **Publishing:** the Release workflow uploads to CurseForge and GitHub. Wago Addons and WoWInterface are ready too: add the `WAGO_API_TOKEN` / `WOWI_API_TOKEN` repository secrets and `## X-Wago-ID:` / `## X-WoWI-ID:` lines to `Forager.toc` (the project IDs from those sites).
 
 ## Known limitations
 
-- Spawns and loot rates are Classic-era (see [Data sources & accuracy](#data-sources--accuracy)). Forever changed some itemization (world epics, rare spawns), so gear-grade rates for rares may be off. Your own data takes over at n ≥ 30.
+- Spawns and loot rates are Classic-era (see [Data sources & accuracy](#data-sources--accuracy)). Forever changed some itemization (world epics, rare spawns), so gear-grade rates for rares may be off. Your own data is blended in and counts most from n = 30.
 - New Forever zones and node types are learned only as you, your guild or imports find them.
-- Gold/hour is an estimate. It assumes you're the only farmer, that 30% of spawn points are live, and straight-line travel without terrain.
+- Gold/hour is an estimate. It assumes you're the only farmer, Classic spawn-pool sizes, and straight-line travel without terrain. Calibration from your own sessions corrects it per spot.
+- Translations cover the tabs, Settings, HUD and gold breakdown; the rest of the window is English. Non-English map previews and translations haven't been checked in a live client.
 - Lockpicking skill can't be read from the API, so it's assumed to be at the level cap.
 - Cave detection needs explored map areas or a visit. A cave's explored-map area also covers the ground around its entrance, so a few "cave" spawns may sit just outside.
 - OpenMap support follows OpenMap's published API (major 1, version 4). It's tested against a mock of that API, not the live addon.
@@ -404,6 +451,12 @@ Not changed, because no better data was found: node spawn positions (Forever red
 | `GameTooltip:SetItemByID`, `Frame:SetMouseClickEnabled` | Item tooltips on hover; clicks pass through icons to the card | Name-only tooltip with Forager's price; clicks are handed to the card |
 | `UNIT_SPELLCAST_START` / `SUCCEEDED` / `INTERRUPTED` for gather spells | Measured cast times | Classic cast times stay in use |
 | `TSM_API.GetCustomPriceValue` on Forever | TSM price source | Skipped; the next price source is used |
+| `C_Minimap.GetTrackingInfo` / `SetTracking` out of combat | Tracking switcher, re-track, ready check fix | No switching; the ready check still warns |
+| `GetUnitSpeed("player")` (may be secret in combat; sampled out of combat only) | Measured travel speed, switcher "moving" check | Level-based speed; no switching |
+| `GetRepairAllCost` at a merchant | Repairs per kill | Repairs not counted |
+| `C_GameRules.IsHardcoreActive` | Hardcore detection | Treated as not Hardcore |
+| `HandleModifiedItemClick`, `TooltipDataProcessor` item post-call | Alt+Shift+click, best spot on item tooltips | No item tooltip lines; click does nothing |
+| `UnitIsAFK`, `UnitOnTaxi`, `IsMounted`, `IsSwimming` | Idle clock, speed samples | Clock counts all time; speed samples less precise |
 
 ## Credits & licence
 

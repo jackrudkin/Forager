@@ -1,7 +1,7 @@
 -- Gather + Kill tab: areas where mining / herbalism and killing (and skinning) the mobs on the way pay
 -- best together, by gold per hour or by gathering + skinning skill-ups per hour.
 local _, ns = ...
-local UI, Main = ns.UI, ns.Main
+local UI, Main, L = ns.UI, ns.Main, ns.L
 local T = ns.Theme
 
 local RISK_COLOR = { [0] = "|cff7fd36b", [1] = "|cffffd100", [2] = "|cffff5050" }
@@ -103,14 +103,14 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
         UI.AttachTip(s.slider, label, tip)
         return s
     end
-    slider(0, "Seconds per kill", "comboKillSeconds", 10, 90, 5, function(v) return v .. " s" end,
-        "Fight + loot for a mob of your level. Lower-level mobs count as faster.")
+    slider(0, L["Seconds per kill"], "comboKillSeconds", 10, 90, 5, function(v) return v .. " s" end,
+        L["Fight + loot for a mob of your level, until Forager has measured your fights (then blended in). Lower-level mobs count as faster."])
     slider(202, "Seconds per skin", "comboSkinSeconds", 0, 10, 0.5, function(v) return v .. " s" end,
         "Extra time to skin a mob (cast + loot). Only for mobs you can skin. Once Forager has measured 10 of your skins it uses your real time instead.")
     slider(404, "Reach from the route", "comboPullYards", 15, 60, 5, function(v) return v .. " yd" end,
         "Mobs and nodes this close to the route count as on the way.")
-    slider(606, "Mob respawn", "comboRespawn", 60, 900, 30, function(v) return math.floor(v / 60) .. ":" .. string.format("%02d", v % 60) end,
-        "Time before a mob you killed is back. A loop shorter than this meets fewer mobs.")
+    slider(606, L["Mob respawn"], "comboRespawn", 60, 900, 30, function(v) return math.floor(v / 60) .. ":" .. string.format("%02d", v % 60) end,
+        L["Time before a mob you killed is back, for mobs without spawn data (or with spawn data off). A loop shorter than this meets fewer mobs."])
 
     ---------------------------------------------------------------------------
     -- result cards
@@ -174,6 +174,20 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
     d.rate = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     d.rate:SetPoint("TOPRIGHT", -12, -10)
     d.rate:SetTextColor(T.gold[1], T.gold[2], T.gold[3])
+    d.rateTip = CreateFrame("Frame", nil, d)
+    d.rateTip:SetPoint("TOPRIGHT", -8, -6)
+    d.rateTip:SetSize(150, 24)
+    d.rateTip:EnableMouse(true)
+    d.rateTip:SetScript("OnEnter", function(self)
+        local r = state.selected
+        local lines = r and ns.Net:Lines(r) or {}
+        if #lines == 0 then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine(L["Gold per hour"], 1, 1, 1)
+        for _, l in ipairs(lines) do GameTooltip:AddDoubleLine(L[l[1]], l[2], 0.8, 0.8, 0.8, 1, 1, 1) end
+        GameTooltip:Show()
+    end)
+    d.rateTip:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local subHover = CreateFrame("Button", nil, d)
     subHover:SetAllPoints(d.sub)
     subHover:SetScript("OnEnter", function(self) if state.selected then ns.Risk:Tooltip(self, state.selected) end end)
@@ -379,7 +393,9 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
             if i > 5 then sk[#sk + 1] = "..." break end
             sk[#sk + 1] = m.m.name
         end
-        skip:SetText(#sk > 0 and ("Skip (less than gathering time is worth): " .. table.concat(sk, ", ")) or "")
+        local skipText = #sk > 0 and ("Skip (less than gathering time is worth): " .. table.concat(sk, ", ")) or ""
+        if r.note then skipText = (skipText ~= "" and (skipText .. "\n") or "") .. "|cffffd100" .. r.note .. "|r" end
+        skip:SetText(skipText)
         local items = r.items or {}
         for i, slot in ipairs(lootLine.slots) do
             local it = items[i]
@@ -431,19 +447,31 @@ Main:RegisterTab("combo", "Gather + Kill", "Interface\\Icons\\INV_Pick_02", func
         scope:Refresh()
         realistic:SetChecked(ns.settings.realistic and true or false)
         skills:SetText(skillLine())
-        local ok, res = pcall(ns.Combo.Run, ns.Combo, { perZone = 2 })
-        if not ok then ns:Print("Gather + Kill error: " .. tostring(res)) res = {} end
-        state.results = res
-        local et = #res == 0 and emptyText() or nil
-        list:SetItems(res, et and "No results - see the panel on the right." or nil)
-        d.empty:SetText(et or "")
-        local pick
-        if ns.Route.active then
-            for _, r in ipairs(res) do
-                if r.uiMap == ns.Route.active.uiMap and r.goal == ns.Route.active.result.goal and r.rank == ns.Route.active.result.rank then pick = r end
+        local finished = false
+        ns.RunJob("combo", function() return ns.Combo:Run({ perZone = 2 }) end, function(res, err)
+            finished = true
+            if err == "replaced" then return end
+            if not res then ns:Print("Gather + Kill error: " .. tostring(err)) res = {} end
+            state.results = res
+            local et = #res == 0 and emptyText() or nil
+            list:SetItems(res, et and L["No results - see the panel on the right."] or nil)
+            d.empty:SetText(et or "")
+            local pick
+            if ns.Route.active then
+                for _, r in ipairs(res) do
+                    if r.uiMap == ns.Route.active.uiMap and r.goal == ns.Route.active.result.goal and r.rank == ns.Route.active.result.rank then pick = r end
+                end
             end
+            panel:Select(pick or res[1])
+        end, function(p)
+            list:SetItems({}, string.format(L["Searching... %d%%"], math.floor(p * 100)))
+        end)
+        if not finished then
+            state.results = {}
+            list:SetItems({}, L["Searching..."])
+            panel:Select(nil)
+            d.empty:SetText(L["Searching..."])
         end
-        panel:Select(pick or res[1])
     end
 
     local pending

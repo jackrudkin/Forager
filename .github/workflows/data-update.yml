@@ -1,0 +1,94 @@
+name: Data update
+
+# Every Monday: rebuild the bundled data from the latest QuestieDB (Forever) and CMaNGOS classic-db,
+# run the tests, and open a pull request if anything changed. If the workflow token may not open
+# pull requests (Settings > Actions > General > "Allow GitHub Actions to create and approve pull
+# requests"), it opens an issue instead. Nothing is merged or released automatically.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.1
+        run: sudo apt-get update -q && sudo apt-get install -y -q lua5.1
+
+      - name: Fetch sources
+        run: |
+          git clone --depth 1 https://github.com/Questie/QuestieDB.git "$RUNNER_TEMP/QuestieDB"
+          git clone --depth 1 https://github.com/cmangos/classic-db.git "$RUNNER_TEMP/classic-db"
+          echo "QDB_SHA=$(git -C "$RUNNER_TEMP/QuestieDB" rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "CDB_SHA=$(git -C "$RUNNER_TEMP/classic-db" rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Prepare inputs
+        working-directory: tools
+        run: |
+          lua5.1 dumpq.lua "$RUNNER_TEMP/QuestieDB/data/Forever/foreverObjectDB.lua" objectData obj.json
+          lua5.1 dumpq.lua "$RUNNER_TEMP/QuestieDB/data/Forever/foreverNpcDB.lua" npcData npc.json
+          cp "$RUNNER_TEMP/QuestieDB/support/Forever/Zones/areaIdToUiMapId.lua" areamap.lua
+          zcat "$RUNNER_TEMP"/classic-db/Full_DB/ClassicDB_*.sql.gz > classic.sql
+
+      - name: Build
+        working-directory: tools
+        env:
+          FORAGER_OUT_CORE: ${{ github.workspace }}/Data
+          FORAGER_OUT_DATA: ${{ github.workspace }}/Forager_Data
+        run: |
+          python3 build_data.py
+          rm -f obj.json npc.json areamap.lua classic.sql
+
+      - name: Changed?
+        id: diff
+        run: |
+          if git diff --quiet -- Data Forager_Data; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Data is up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- Data Forager_Data | tee "$RUNNER_TEMP/stat.txt"
+          fi
+
+      - name: Test
+        id: test
+        if: steps.diff.outputs.changed == 'true'
+        continue-on-error: true
+        run: lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup
+
+      - name: Open pull request
+        id: pr
+        if: steps.diff.outputs.changed == 'true'
+        continue-on-error: true
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: data-update
+          delete-branch: true
+          add-paths: |
+            Data
+            Forager_Data
+          commit-message: "Data update: QuestieDB ${{ env.QDB_SHA }}, classic-db ${{ env.CDB_SHA }}"
+          title: "Data update: QuestieDB ${{ env.QDB_SHA }}"
+          body: |
+            Weekly rebuild of the bundled data (QuestieDB `${{ env.QDB_SHA }}`, CMaNGOS classic-db `${{ env.CDB_SHA }}`).
+            Tests: **${{ steps.test.outcome }}**. Bump `## Version:` in the three TOCs to release it.
+
+      - name: Fall back to an issue
+        if: steps.diff.outputs.changed == 'true' && steps.pr.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The weekly rebuild found new data (QuestieDB \`$QDB_SHA\`, classic-db \`$CDB_SHA\`) but could not open a pull request."
+            echo "Tests: ${{ steps.test.outcome }}. Run the Data update workflow again after allowing Actions to create pull requests, or rebuild locally (tools/README.md)."
+            echo; echo '```'; cat "$RUNNER_TEMP/stat.txt"; echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          gh issue create --title "Data update available (QuestieDB $QDB_SHA)" --body-file "$RUNNER_TEMP/body.md"

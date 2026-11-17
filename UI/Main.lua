@@ -16,14 +16,14 @@ local function zoneItems(includeOff, includeAuto)
     for id, z in pairs(ns.Zones) do if z.faction ~= "S" then list[#list + 1] = { id = id, z = z } end end
     table.sort(list, function(a, b) if a.z.min ~= b.z.min then return a.z.min < b.z.min end return a.z.name < b.z.name end)
     for _, e in ipairs(list) do
-        items[#items + 1] = { text = string.format("%s |cff9d9d9d(%d-%d)|r", e.z.name, e.z.min, e.z.max), value = e.id }
+        items[#items + 1] = { text = string.format("%s |cff9d9d9d(%d-%d)|r", ns.DS:ZoneName(e.id), e.z.min, e.z.max), value = e.id }
     end
     return items
 end
 Main.ZoneItems = zoneItems
 
 function Main:RegisterTab(key, label, icon, build)
-    self.tabs[#self.tabs + 1] = { key = key, label = label, icon = icon, build = build }
+    self.tabs[#self.tabs + 1] = { key = key, label = ns.L[label], icon = icon, build = build }
 end
 
 function Main:RateText(r)

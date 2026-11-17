@@ -52,7 +52,7 @@ function ns:Fire(event, ...)
     if not list then return end
     for i = 1, #list do
         local ok, err = pcall(list[i], event, ...)
-        if not ok then ns:Debug("error in", event, err) end
+        if not ok then ns:Error(event, err) end
     end
 end
 
@@ -67,6 +67,115 @@ end
 
 function ns.Ticker(sec, fn)
     if C_Timer and C_Timer.NewTicker then return C_Timer.NewTicker(sec, fn) end
+end
+
+-------------------------------------------------------------------------------
+-- time-sliced jobs: long searches run a slice per frame so the game never stutters
+-------------------------------------------------------------------------------
+local Async = { budget = 6, jobs = {} } -- milliseconds per frame
+ns.Async = Async
+local clock = debugprofilestop or function() return GetTime() * 1000 end
+
+--- Inside a job: give the frame back when this frame's budget is used. Outside a job: no-op.
+--- Never call it under a pcall inside the job (Lua 5.1 cannot yield across pcall).
+function ns.Yield()
+    local co = Async.running
+    if co and coroutine.running() == co and clock() - Async.frameStart > Async.budget then coroutine.yield() end
+end
+
+local driver
+local function step()
+    local job = Async.jobs[1]
+    if not job then driver:SetScript("OnUpdate", nil) return end
+    if not job.co then job.co = coroutine.create(job.fn) end
+    Async.running, Async.frameStart = job.co, clock()
+    local ok, a = coroutine.resume(job.co)
+    Async.running = nil
+    if ok and job.progress and coroutine.status(job.co) ~= "dead" then pcall(job.progress, Async.progress or 0) end
+    if not ok then
+        table.remove(Async.jobs, 1)
+        ns:Error("job " .. tostring(job.key), a)
+        if job.done then pcall(job.done, nil, a) end
+    elseif coroutine.status(job.co) == "dead" then
+        table.remove(Async.jobs, 1)
+        if job.done then
+            local ok2, err = pcall(job.done, a)
+            if not ok2 then ns:Error("job done " .. tostring(job.key), err) end
+        end
+    end
+end
+
+--- Run fn() as a time-sliced job; done(result) or done(nil, err) when it finishes; progress(0-1)
+--- after each slice. A waiting job with the same key is replaced. The first slice runs at once, so
+--- quick (or cached) work finishes without waiting for the next frame.
+function ns.RunJob(key, fn, done, progress)
+    for i = #Async.jobs, 1, -1 do
+        local j = Async.jobs[i]
+        if j.key == key and not (j.co and j.co == Async.running) then
+            table.remove(Async.jobs, i)
+            if j.co and j.done then pcall(j.done, nil, "replaced") end
+        end
+    end
+    Async.jobs[#Async.jobs + 1] = { key = key, fn = fn, done = done, progress = progress }
+    Async.progress = 0
+    if not driver then driver = CreateFrame("Frame") end
+    driver:SetScript("OnUpdate", step)
+    if not Async.running and Async.jobs[1] and Async.jobs[1].key == key then step() end
+end
+
+--- Run every waiting job to the end now (tests, /forage selftest).
+function ns.DrainJobs(max)
+    local n = 0
+    while Async.jobs[1] and n < (max or 10000) do step() n = n + 1 end
+end
+
+--- Bump the data generation: cached search results are stale after this.
+function ns.Touch() ns.gen = (ns.gen or 0) + 1 end
+ns.gen = 0
+for _, ev in ipairs({ "FORAGER_SETTINGS_CHANGED", "FORAGER_GOAL_CHANGED", "FORAGER_DATA_CHANGED", "FORAGER_NODES_CHANGED",
+    "FORAGER_QUESTZONE_CHANGED", "FORAGER_CAVES_CHANGED", "SKILL_LINES_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_DEAD" }) do
+    ns:On(ev, ns.Touch)
+end
+
+--- Fingerprint of the scalar settings (any setting can change a search).
+local function settingsPrint()
+    local st = ns.settings or {}
+    local keys = {}
+    for k, v in pairs(st) do if type(v) ~= "table" then keys[#keys + 1] = k end end
+    table.sort(keys)
+    local out = {}
+    for i, k in ipairs(keys) do out[i] = tostring(st[k]) end
+    out[#out + 1] = table.concat(st.priceSources or {}, ">")
+    return table.concat(out, "|")
+end
+
+--- Key for a set of search options + data generation + settings + 5-minute price window.
+function ns.OptsKey(opts, extra)
+    local parts = { tostring(ns.gen), tostring(math.floor(GetTime() / 300)), tostring(extra or ""), settingsPrint(),
+        tostring(ns.Player and ns.Player:Level()), tostring(ns.Player and ns.Player:Faction()) }
+    local sk = {}
+    for k, v in pairs(ns.Player and ns.Player.skills or {}) do sk[#sk + 1] = k .. v.rank end
+    table.sort(sk)
+    parts[#parts + 1] = table.concat(sk, ",") .. tostring(ns.db and ns.db.ruleset)
+    local keys = {}
+    for k in pairs(opts or {}) do keys[#keys + 1] = tostring(k) end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+        local v = opts[k]
+        if type(v) == "table" then
+            local sub = {}
+            for a, b in pairs(v) do sub[#sub + 1] = tostring(a) .. "=" .. tostring(b) end
+            table.sort(sub)
+            v = "{" .. table.concat(sub, ",") .. "}"
+        end
+        parts[#parts + 1] = k .. "=" .. tostring(v)
+    end
+    return table.concat(parts, ";")
+end
+
+function ns.JobPending(key)
+    for _, j in ipairs(Async.jobs) do if j.key == key then return true end end
+    return false
 end
 
 -------------------------------------------------------------------------------
@@ -90,6 +199,19 @@ function ns:Debug(...)
     if ns.db and ns.db.settings and ns.db.settings.debug then
         DEFAULT_CHAT_FRAME:AddMessage("|cff888888Forager debug:|r " .. line)
     end
+end
+
+--- Record a caught Lua error (kept in SavedVariables for /forage errors; same message counted once).
+function ns:Error(where, err)
+    local msg = tostring(where) .. ": " .. tostring(err)
+    ns:Debug("error", msg)
+    local list = ns.db and ns.db.errors
+    if type(list) ~= "table" then return end
+    for _, e in ipairs(list) do
+        if e.m == msg then e.n, e.t = (e.n or 1) + 1, time() return end
+    end
+    table.insert(list, 1, { m = msg:sub(1, 400), n = 1, t = time(), v = ns.version })
+    while #list > 20 do table.remove(list) end
 end
 
 -------------------------------------------------------------------------------

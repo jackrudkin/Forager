@@ -22,4 +22,7 @@ read_globals = {
   "C_MapExplorationInfo", "CreateVector2D", "IsIndoors", "GetSubZoneText", "UnitCanAttack", "GetBuildInfo",
   "OpenWorldMap", "UiMapPoint", "C_SuperTrack", "TomTom", "HBD_PINS_WORLDMAP_SHOW_CONTINENT", "Mixin",
   "BackdropTemplateMixin", "OpenMapAPI", "GetZonePVPInfo", "UnitIsPVP",
+  "C_Container", "C_GameRules", "GetAddOnMemoryUsage", "UpdateAddOnMemoryUsage", "GetLocale", "GetRepairAllCost",
+  "GetUnitSpeed", "HandleModifiedItemClick", "IsAltKeyDown", "IsMounted", "IsSwimming", "ItemRefTooltip",
+  "UnitCastingInfo", "UnitChannelInfo", "UnitIsAFK", "UnitIsDeadOrGhost", "UnitOnTaxi", "debugprofilestop",
 }

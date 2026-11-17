@@ -101,6 +101,37 @@ ns.ScarceSkin = {
     { id = 249427, ctype = 1, minLevel = 10, maxLevel = 26, rate = 0.029, n = 1000 },
 }
 
+-- Herb seeds (new in Forever): bonus finds from herb nodes, four tiers. Which herb nodes give which
+-- tier: QuestieDB Forever item traces (objectDrops). Vendor prices: Forever item database pages
+-- (Nov 2026); only a fallback, the game's own sell price is used once the item is cached.
+-- No published rates: Forager learns them from your gathers (pooled over the herbs of a tier).
+ns.HerbSeeds = {
+    { id = 268415, name = "Commonplace Herb Seeds", vendor = 10, objects = { 1617, 1618, 1619, 657380, 657382, 657383 } },
+    { id = 268416, name = "Uncommon Herb Seeds", vendor = 25,
+        objects = { 1620, 1621, 1622, 1623, 1624, 1628, 2045, 657385, 657386, 657387, 657388, 657394 } },
+    { id = 268417, name = "Unusual Herb Seeds", vendor = 90, objects = { 2041, 2042, 2043, 2044, 657390, 657391, 657392, 657393 } },
+    { id = 268418, name = "Scarce Herb Seeds", vendor = 115, objects = { 2046, 2866, 142140, 142141, 142142, 142143, 142144,
+        142145, 176583, 176584, 176586, 176587, 176588, 657395, 657397, 657398, 657399, 657401 } },
+}
+ns.KnownItems = {} -- small items Forager knows without the data addon: [id] = { name, vendor }
+for id, e in pairs(ns.Scarce) do ns.KnownItems[id] = { e.name, e.vendor } end
+for _, e in ipairs(ns.HerbSeeds) do ns.KnownItems[e.id] = { e.name, e.vendor } end
+
+-- Spawn-rate hotfixes since launch (Blizzard hotfix notes; qualitative, the bundled Classic data
+-- does not include them). Shown on spots in these zones.
+ns.HotfixNotes = {
+    [1434] = "Hotfix (Nov 13): tigers, panthers and raptors spawn more often",
+    [1418] = "Hotfix (Nov 13): Lesser Rock Elementals spawn more often",
+    [1412] = "Hotfix (Nov 13): fewer Quillboar and Venture Co. in the starting area",
+    [1419] = "Hotfix (Nov 13): Nethergarde guards no longer drop loot",
+    [1426] = "Hotfix: Grol'bolar troggs no longer respawn too quickly",
+    [1445] = "Hotfix: murlocs no longer respawn too quickly",
+}
+
+-- Gathering tools that must be in your bags, and the resource tracking spells.
+ns.Tools = { ore = 2901, skin = 7005 }            -- Mining Pick, Skinning Knife
+ns.TrackSpells = { herb = 2383, ore = 2580 }      -- Find Herbs, Find Minerals
+
 ns.ColorHex = {
     red = "ff2020", orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080",
     [0] = "9d9d9d", [1] = "ffffff", [2] = "1eff00", [3] = "0070dd", [4] = "a335ee", [5] = "ff8000",

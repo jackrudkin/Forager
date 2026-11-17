@@ -183,7 +183,7 @@ function M.Install(env)
     G.IsInGuild = function() return true end
     G.IsInGroup = function() return false end
     G.IsInRaid = function() return false end
-    G.IsShiftKeyDown = function() return false end
+    G.IsShiftKeyDown = function() return M.shift or false end
     G.IsMouseButtonDown = function() return false end
     G.GetCursorPosition = function() return 0, 0 end
     G.ReloadUI = function() M.reloaded = true end
@@ -221,7 +221,10 @@ function M.Install(env)
         end,
     }
     G.C_Item = {
-        GetItemNameByID = function() return nil end,
+        GetItemNameByID = function(id)
+            local names = { [2901] = "Mining Pick", [7005] = "Skinning Knife", [999001] = "Keen Skinning Knife" }
+            return names[id]
+        end,
         GetItemQualityByID = function(id) if id == 9999 then return 2 end return nil end,
         GetItemInfoInstant = function(id) if id == 9999 then return id, "Armor", "Leather", "INVTYPE_CHEST", 0, 4, 2 end return id, "Trade", "", "", 0, 7, 0 end,
         GetItemIconByID = function() return 134400 end,
@@ -244,8 +247,9 @@ function M.Install(env)
         GetInfo = function() return { title = "Wolves Across the Border", questID = 33, isHeader = false } end,
         GetQuestObjectives = function() return { { text = "Prowler slain: 2/8", finished = false } } end,
     }
-    G.Enum = { TooltipDataType = { Unit = 2 } }
-    G.TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) M.tooltipPostCall = fn end }
+    G.Enum = { TooltipDataType = { Item = 0, Unit = 2 } }
+    M.postCalls = {}
+    G.TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) M.postCalls[kind] = fn if kind == 2 then M.tooltipPostCall = fn end end }
     G.PanelTemplates_SetNumTabs = function() end
     G.PanelTemplates_SetTab = function() end
     G.PanelTemplates_TabResize = function() end
@@ -271,6 +275,38 @@ function M.Install(env)
     G.GetZonePVPInfo = function() return M.zonePvp end
     G.UnitIsPVP = function() return M.pvpFlag end
     G.OpenWorldMap = function(id) M.openedMap = id G.WorldMapFrame._shown = true M.worldMapID = id end
+    -- 2.0 additions: tracking, movement, repairs, bags, AFK, hardcore, modified clicks
+    M.tracking = { { name = "Find Herbs", active = false, spellID = 2383 }, { name = "Find Minerals", active = false, spellID = 2580 },
+        { name = "Track Humanoids", active = false, spellID = 5225 } }
+    G.C_Minimap.GetNumTrackingTypes = function() return #M.tracking end
+    G.C_Minimap.GetTrackingInfo = function(i) local t = M.tracking[i] return t and { name = t.name, active = t.active, spellID = t.spellID } end
+    G.C_Minimap.SetTracking = function(i, on)
+        if M.inCombat then error("protected in combat") end
+        for j, t in ipairs(M.tracking) do if t.spellID == 2383 or t.spellID == 2580 then t.active = false end if j == i then t.active = on end end
+        M.trackingSets = (M.trackingSets or 0) + 1
+    end
+    M.speed = 0
+    G.GetUnitSpeed = function() return M.speed, 7, 7, 4.72 end
+    G.IsMounted = function() return M.mounted or false end
+    G.IsSwimming = function() return false end
+    G.UnitOnTaxi = function() return false end
+    G.UnitIsDeadOrGhost = function() return M.dead or false end
+    G.UnitIsAFK = function() return M.afk or false end
+    G.UnitCastingInfo = function() return nil end
+    G.UnitChannelInfo = function() return nil end
+    M.repairCost = 0
+    G.GetRepairAllCost = function() return M.repairCost, M.repairCost > 0 end
+    M.bags = {}
+    G.C_Container = {
+        GetContainerNumSlots = function(bag) return bag == 0 and #M.bags or 0 end,
+        GetContainerItemID = function(bag, slot) return bag == 0 and M.bags[slot] or nil end,
+    }
+    G.C_Item.GetItemCount = function(id) local n = 0 for _, b in ipairs(M.bags) do if b == id then n = n + 1 end end return n end
+    G.C_GameRules = { IsHardcoreActive = function() return M.hardcore or false end }
+    G.IsAltKeyDown = function() return M.alt or false end
+    G.HandleModifiedItemClick = function(link) M.modifiedClick = link return false end
+    G.GetLocale = function() return M.locale or "enUS" end
+    G.debugprofilestop = nil
 end
 
 return M

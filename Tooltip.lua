@@ -1,10 +1,11 @@
 -- Mob tooltip: skinnable + required skill, skin item chances, cloth/meat/elemental drops,
 -- gear grade chances (green/blue/purple) with disenchant hint, pick pocket boxes.
--- Bundled rates are Classic-era estimates (+ Forever Scarce where sourced); own observations replace them from minSamples.
+-- Bundled rates are Classic-era estimates (+ Forever Scarce where sourced); your observations are blended in
+-- (they count half at minSamples, see Learn.Blend).
 local _, ns = ...
 local Tooltip = {}
 ns.Tooltip = Tooltip
-local DS, P, Safe = ns.DS, ns.Player, ns.Safe
+local DS, P, Safe, L = ns.DS, ns.Player, ns.Safe, ns.L
 
 local GREY = "|cff9d9d9d"
 
@@ -18,25 +19,18 @@ local function joinList(list, max)
     return table.concat(parts, GREY .. " · |r")
 end
 
---- Merge bundled list {{id,p}} with own counts {[id]=n} over total. Returns list, label.
+local function label(n, minSamples)
+    if n and n >= minSamples then return "|cff7fd36bmy data n=" .. n .. "|r" end
+    if n and n > 0 then return GREY .. "blend n=" .. n .. "|r" end
+    return GREY .. "estimate|r"
+end
+
+--- Blend bundled list {{id,p}} with own counts {[id]=n} over total. Returns list (or nil), label.
 local function rates(bundled, ownCounts, ownTotal, minSamples)
-    if ownTotal and ownTotal >= minSamples and ownCounts then
-        local out = {}
-        for id, n in pairs(ownCounts) do out[#out + 1] = { id, n / ownTotal } end
-        table.sort(out, function(a, b) return a[2] > b[2] end)
-        return out, "|cff7fd36bmy data n=" .. ownTotal .. "|r"
-    end
-    local label = GREY .. "estimate" .. ((ownTotal and ownTotal > 0) and (" | me n=" .. ownTotal) or "") .. "|r"
-    if not bundled or #bundled == 0 then
-        if ownTotal and ownTotal > 0 and ownCounts then
-            local out = {}
-            for id, n in pairs(ownCounts) do out[#out + 1] = { id, n / ownTotal } end
-            table.sort(out, function(a, b) return a[2] > b[2] end)
-            return out, GREY .. "learning (n=" .. ownTotal .. ")|r"
-        end
-        return nil, label
-    end
-    return bundled, label
+    ownTotal = ownTotal or 0
+    if (not bundled or #bundled == 0) and (ownTotal == 0 or not ownCounts) then return nil, label(0, minSamples) end
+    local list = ns.Learn:BlendList(bundled, ownCounts, ownTotal)
+    return list, label(ownTotal, minSamples)
 end
 
 function Tooltip:Lines(npcID, level, opts)
@@ -59,8 +53,11 @@ function Tooltip:Lines(npcID, level, opts)
             local need = ns.SkinSkillForLevel(level)
             local have = P:Skill("skin")
             local col = ns.SkillColor(need, have)
-            local list, label = rates(m and m.skin, own and own.si, own and own.s, minN)
-            add(string.format("|cff%sSkinnable %d|r%s", ns.ColorHex[col], need, have and (GREY .. " (you " .. have .. ")|r") or ""), label)
+            -- m.skin is already blended with your skins (Learn:SkinList)
+            local list = m and m.skin
+            local lab = label(own and (own.ss or own.s) or 0, minN)
+            if not m and own and own.si then list = rates(nil, own.si, own.s, minN) end
+            add(string.format("|cff%sSkinnable %d|r%s", ns.ColorHex[col], need, have and (GREY .. " (you " .. have .. ")|r") or ""), lab)
             if list then add("  " .. joinList(list, 4)) end
         end
     end
@@ -75,31 +72,26 @@ function Tooltip:Lines(npcID, level, opts)
                 if cat ~= "other" then ownFarm[id] = n end
             end
         end
-        local list, label = rates(m and m.farm, ownFarm, own and own.k, minN)
+        local list, lab = rates(m and m.farm, ownFarm, own and own.k, minN)
         if list and #list > 0 then
-            add("|cffffd100Drops|r", label)
+            add("|cffffd100Drops|r", lab)
             add("  " .. joinList(list, 4))
         end
     end
 
     -- gear grades
     if s.tooltipGear then
-        local g, b, e, label
+        local g, b, e
         local k = own and own.k or 0
-        if k >= minN then
-            local q = own.q or {}
-            g, b, e = (q[2] or 0) / k, (q[3] or 0) / k, (q[4] or 0) / k
-            label = "|cff7fd36bmy data n=" .. k .. "|r"
-        elseif m and m.green then
-            g, b, e = m.green, m.blue, m.epic
-            label = GREY .. "Classic est." .. (k > 0 and (" | me n=" .. k) or "") .. "|r"
+        local q = own and own.q or {}
+        local B = ns.Learn.Blend
+        if m and m.green then
+            g, b, e = B(k, (q[2] or 0) / math.max(1, k), m.green), B(k, (q[3] or 0) / math.max(1, k), m.blue), B(k, (q[4] or 0) / math.max(1, k), m.epic)
         elseif k > 0 then
-            local q = own.q or {}
             g, b, e = (q[2] or 0) / k, (q[3] or 0) / k, (q[4] or 0) / k
-            label = GREY .. "learning (n=" .. k .. ")|r"
         end
         if g then
-            add(string.format("Gear: |cff1eff00%s|r · |cff0070dd%s|r · |cffa335ee%s|r", ns.Pct(g), ns.Pct(b), ns.Pct(e)), label)
+            add(string.format("Gear: |cff1eff00%s|r · |cff0070dd%s|r · |cffa335ee%s|r", ns.Pct(g), ns.Pct(b), ns.Pct(e)), label(k, minN))
             if g > 0 and m and m.greenIlvl and m.greenIlvl > 0 then
                 local v, best = ns.Prices:DisenchantValue(m.greenIlvl, 2)
                 add(string.format("  %sGreen (ilvl ~%d) DE: %s ≈ %s|r", GREY, m.greenIlvl, best and DS:ItemName(best) or "-", ns.Money(v)))
@@ -136,7 +128,83 @@ local function onUnitTooltip(tooltip, data)
     end
 end
 
+-------------------------------------------------------------------------------
+-- item tooltips: best spot for this character, Alt+Shift+click to farm
+-------------------------------------------------------------------------------
+local best, bestN = {}, 0   -- [itemID] = { text, gen, at } (capped)
+local hovered
+
+--- Can Forager search this item? (node yields, mob drops in the data, Scarce, seeds)
+function Tooltip.Farmable(itemID)
+    if not itemID then return false end
+    if ns.KnownItems[itemID] or DS:TypeForItem(itemID) then return true end
+    return ForagerData and ForagerData.items and ForagerData.items[itemID] ~= nil or false
+end
+
+local function bestText(r)
+    if not r then return GREY .. "Forager: no spot for your level and skills|r" end
+    local where = (r.areaName and (r.areaName .. ", ") or "") .. (r.zoneName or "")
+    local rate = r.itemUnits and r.itemUnits > 0 and string.format("~%.0f/h", r.itemUnits) or (ns.Money(r.perHour, true) .. "/h")
+    return "|cff7fd36bForager:|r " .. L["best spot"] .. " |cffffffff" .. where .. "|r " .. GREY .. rate .. "|r"
+end
+
+--- Search the best spot for an item in the background (one at a time; a newer hover replaces it).
+function Tooltip:QueueBest(itemID)
+    if InCombatLockdown() or not DS:HasBundled() then return end
+    ns.RunJob("itemtip", function()
+        local keep = ns.Finder.last
+        local res = ns.Finder:Search(ns.Finder:Options(ns.Finder:ItemGoal(itemID), "gold"))
+        ns.Finder.last = keep
+        return res
+    end, function(res)
+        if not res then return end
+        if bestN >= 100 then wipe(best) bestN = 0 end
+        if not best[itemID] then bestN = bestN + 1 end
+        best[itemID] = { text = bestText(res[1]), gen = ns.gen, at = GetTime() }
+        if hovered == itemID and GameTooltip:IsShown() and GameTooltip.RefreshData then pcall(GameTooltip.RefreshData, GameTooltip) end
+    end)
+end
+
+local function onItemTooltip(tooltip, data)
+    if not ns.db or not ns.settings.tooltipItem or (ns.UI and ns.UI.ownTip) then return end
+    if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+    local id = data and Safe(data.id)
+    if type(id) ~= "number" or not Tooltip.Farmable(id) then return end
+    local b = best[id]
+    if b and b.gen == ns.gen and GetTime() - b.at < 600 then
+        tooltip:AddLine(b.text, 1, 1, 1)
+    else
+        hovered = id
+        ns.After(0.4, function() if hovered == id and GameTooltip:IsShown() then Tooltip:QueueBest(id) end end)
+    end
+    tooltip:AddLine(GREY .. L["Alt+Shift+click: farm this with Forager"] .. "|r", 1, 1, 1)
+end
+
+--- Alt+Shift+click on any item link: open Forager's Farm tab on that item.
+function Tooltip.OnModifiedClick(link)
+    if not (IsAltKeyDown and IsAltKeyDown() and IsShiftKeyDown and IsShiftKeyDown()) then return end
+    local id = type(link) == "string" and tonumber(link:match("item:(%d+)"))
+    if not id or not Tooltip.Farmable(id) then return end
+    ns.char.goal = ns.Finder:ItemGoal(id)
+    ns.Main:Toggle("farm")
+    ns:Fire("FORAGER_GOAL_CHANGED")
+    ns:Print(string.format(L["Looking for the best place to farm %s."], DS:ItemName(id)))
+end
+
 function Tooltip:Init()
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tt, data)
+            local ok, err = pcall(onItemTooltip, tt, data)
+            if not ok then ns:Error("item tooltip", err) end
+        end)
+    end
+    if HandleModifiedItemClick then
+        hooksecurefunc("HandleModifiedItemClick", function(link)
+            local ok, err = pcall(Tooltip.OnModifiedClick, link)
+            if not ok then ns:Error("item click", err) end
+        end)
+    end
+    GameTooltip:HookScript("OnHide", function() hovered = nil end)
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tt, data)
             local ok, err = pcall(onUnitTooltip, tt, data)

@@ -8,6 +8,7 @@ ns.Overlay = Overlay
 local HBD = LibStub("HereBeDragons-2.0")
 local P, Route = ns.Player, ns.Route
 local T = ns.Theme
+local L = ns.L
 
 local function guard(name, fn)
     return function(...)
@@ -450,7 +451,46 @@ local function setupHUD()
     map:SetPoint("RIGHT", skip, "LEFT", -4, 0)
     local win = flatButton(hud, "Forager", 60, function() ns.Main:Toggle("farm") end)
     win:SetPoint("RIGHT", map, "LEFT", -4, 0)
+    -- ready check line (tracking off, tool missing) with a one-click fix
+    hud.warn = hud:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hud.warn:SetPoint("TOPLEFT", 8, -60)
+    hud.warn:SetPoint("RIGHT", -64, 0)
+    hud.warn:SetJustifyH("LEFT")
+    hud.warn:SetWordWrap(false)
+    hud.warn:SetTextColor(1, 0.82, 0)
+    hud.fix = flatButton(hud, L["Turn on"], 54, function()
+        local i = ns.Tracking.issues[1]
+        if i and i.fix then i.fix() end
+        ns.After(0.5, function() ns.Tracking:Refresh() end)
+    end)
+    hud.fix:SetPoint("TOPRIGHT", -6, -58)
+    hud.warn:Hide()
+    hud.fix:Hide()
+    stop.text:SetText(L["Stop"])
+    skip.text:SetText(L["Skip"])
+    map.text:SetText(L["Map"])
     hud:Hide()
+end
+
+--- Show the first ready-check issue under the HUD (grows the HUD by one line).
+local function hudIssues()
+    local i = ns.Tracking and ns.Tracking.issues and ns.Tracking.issues[1]
+    if i then
+        hud.warn:SetText("! " .. i.text)
+        hud.warn:Show()
+        hud.fix:SetShown(i.fix ~= nil and not InCombatLockdown())
+        hud:SetHeight(92)
+        -- buttons sit at the bottom; keep the warning above them
+        hud.warn:ClearAllPoints()
+        hud.warn:SetPoint("BOTTOMLEFT", 8, 30)
+        hud.warn:SetPoint("RIGHT", -64, 0)
+        hud.fix:ClearAllPoints()
+        hud.fix:SetPoint("BOTTOMRIGHT", -6, 28)
+    else
+        hud.warn:Hide()
+        hud.fix:Hide()
+        hud:SetHeight(74)
+    end
 end
 
 local function updateHUD()
@@ -461,6 +501,7 @@ local function updateHUD()
     local goal = ns.Finder:GoalInfo(r.goal)
     hud.title:SetText(string.format("%s · %s%s", goal.label, r.areaName and (r.areaName .. ", ") or "", r.zoneName or P:ZoneName(a.uiMap)))
     hud:Show()
+    hudIssues()
     local n = #a.route.points
     if n == 0 then
         hud.arrow:SetAlpha(0.25)
@@ -484,7 +525,9 @@ local function updateHUD()
     hud.arrow:SetRotation(angle - facing)
     hud.dist:SetText(string.format("%d yd", yards or d or 0))
     local rate = r.mode == "skill" and string.format("%.0f skill-ups/h", r.perHour) or (ns.Money(r.perHour, true) .. "/h")
-    hud.info:SetText(string.format("Stop %d/%d  ·  loop %d (%d%%)  ·  %s", idx, n, loops + 1, prog * 100, rate))
+    local cool = Route:CoolingCount()
+    hud.info:SetText(string.format(L["Stop %d/%d  ·  loop %d (%d%%)  ·  %s"], idx, n, loops + 1, prog * 100, rate)
+        .. (cool > 0 and string.format("  ·  |cff9d9d9d" .. L["%d cooling"] .. "|r", cool) or ""))
 end
 Overlay.UpdateArrow = guard("hud", updateHUD)
 
@@ -507,6 +550,7 @@ function Overlay:Init()
         end
     end)
     ns:On("FORAGER_ROUTE_PROGRESS", function() Overlay.DrawWorldMap() end)
+    ns:On("FORAGER_READY_CHANGED", function() Overlay.UpdateArrow() end)
     ns:On("FORAGER_SETTINGS_CHANGED", function() Overlay.DrawWorldMap() Overlay.DrawMinimap() Overlay.UpdateArrow() end)
     ns:On("PLAYER_REGEN_DISABLED", function() if ns.settings.hideInCombat then Overlay.DrawMinimap() Overlay.UpdateArrow() end end)
     ns:On("PLAYER_REGEN_ENABLED", function() Overlay.UpdateArrow() end)

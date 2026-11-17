@@ -55,14 +55,14 @@ function P:Position(uiMap)
     return x, y, uiMap
 end
 
---- Yards/second used for route timing.
+--- Yards/second used for route timing: the setting, else your measured speed (mounted from level 40,
+--- when Forever's 60% riding unlocks; 100% at 60 costs 1,000g, so it is only assumed once measured),
+--- else 60% mount from 40 and running below.
 function P:Speed()
     local s = ns.settings.speed
     if s and ns.Speeds[s] then return ns.Speeds[s] end
-    local lvl = P:Level()
-    if lvl >= 60 then return ns.Speeds.mount60 end
-    if lvl >= 40 then return ns.Speeds.mount60 end
-    return ns.Speeds.run
+    if P:Level() >= 40 then return ns.Learn:Speed(true) or ns.Speeds.mount60 end
+    return ns.Learn:Speed(false) or ns.Speeds.run
 end
 
 --- Zone width/height in yards via HereBeDragons, with a fallback.
@@ -79,12 +79,7 @@ function P:Distance(uiMap, x1, y1, x2, y2)
     return math.sqrt(dx * dx + dy * dy)
 end
 
-function P:ZoneName(uiMap)
-    local z = ns.Zones[uiMap]
-    if z then return z.name end
-    local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(uiMap)
-    return info and info.name or ("Map " .. tostring(uiMap))
-end
+function P:ZoneName(uiMap) return ns.DS:ZoneName(uiMap) end
 
 function P:InRestrictedContent()
     local inInstance, itype = IsInInstance()

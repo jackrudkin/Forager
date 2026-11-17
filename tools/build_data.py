@@ -13,8 +13,8 @@ import json, math, re, sys, collections, os
 from sqlparse import parse_inserts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_CORE = os.path.join(HERE, '..', 'build', 'Forager', 'Data')
-OUT_DATA = os.path.join(HERE, '..', 'build', 'Forager_Data')
+OUT_CORE = os.environ.get('FORAGER_OUT_CORE') or os.path.join(HERE, '..', 'build', 'Forager', 'Data')
+OUT_DATA = os.environ.get('FORAGER_OUT_DATA') or os.path.join(HERE, '..', 'build', 'Forager_Data')
 os.makedirs(OUT_CORE, exist_ok=True)
 os.makedirs(OUT_DATA, exist_ok=True)
 
@@ -92,7 +92,8 @@ POOLS = [
 # ---------------------------------------------------------------- read SQL
 need = {'creature_template', 'item_template', 'skinning_loot_template', 'creature_loot_template',
         'reference_loot_template', 'pickpocketing_loot_template', 'gameobject_template',
-        'gameobject_loot_template', 'fishing_loot_template', 'skill_fishing_base_level'}
+        'gameobject_loot_template', 'fishing_loot_template', 'skill_fishing_base_level',
+        'gameobject', 'pool_template', 'pool_gameobject', 'pool_pool', 'creature'}
 tables = collections.defaultdict(list)
 cols = {}
 for t, c, row in parse_inserts(os.path.join(HERE, 'classic.sql'), need):
@@ -251,6 +252,44 @@ for k, v in obj.items():
     if n:
         name2objs[n].append(int(k))
 
+# ---------------------------------------------------------------- spawn pools and respawn times (CMaNGOS)
+# A gathering spawn point is usually one of several in a pool, of which only max_limit exist at a time.
+# Its live share = max_limit / pool members (times the chance its parent pool is active).
+pool_limit, pool_desc = {}, {}
+for e, lim, d in rows('pool_template', 'entry', 'max_limit', 'description'):
+    pool_limit[e], pool_desc[e] = lim, d
+go_pool = {g: p for g, p in rows('pool_gameobject', 'guid', 'pool_entry')}
+pool_mother = {p: m for p, m in rows('pool_pool', 'pool_id', 'mother_pool')}
+pool_members = collections.Counter(go_pool.values())
+pool_children = collections.Counter(pool_mother.values())
+def pool_active(p, depth=0):
+    m = pool_mother.get(p)
+    if m is None or depth > 6:
+        return 1.0
+    lim, n = pool_limit.get(m, 0), pool_children[m]
+    return (min(1.0, lim / n) if lim and n else 1.0) * pool_active(m, depth + 1)
+def spawn_share(g):
+    p = go_pool.get(g)
+    if p is None:
+        return 1.0
+    lim, n = pool_limit.get(p, 0), pool_members[p]
+    return (min(1.0, lim / n) if lim and n else 1.0) * pool_active(p)
+guids_by_entry = collections.defaultdict(list)
+go_respawn = {}
+for g, e, rmin, rmax in rows('gameobject', 'guid', 'id', 'spawntimesecsmin', 'spawntimesecsmax'):
+    guids_by_entry[e].append(g)
+    go_respawn[g] = ((rmin or 0) + (rmax or rmin or 0)) / 2.0
+zone_by_name = {v[0]: k for k, v in ZONES.items()}
+zone_ore_share = collections.defaultdict(lambda: collections.defaultdict(list))  # uiMap -> type -> shares ("Mineral nodes - <Zone>" pools)
+def mean(xs):
+    return sum(xs) / len(xs) if xs else None
+def median(xs):
+    xs = sorted(xs)
+    return xs[len(xs) // 2] if xs else None
+creature_respawn = collections.defaultdict(list)
+for e, rmin, rmax in rows('creature', 'id', 'spawntimesecsmin', 'spawntimesecsmax'):
+    creature_respawn[e].append(((rmin or 0) + (rmax or rmin or 0)) / 2.0)
+
 node_types = []
 node_spawns = collections.defaultdict(lambda: collections.defaultdict(list))
 objmap = {}
@@ -269,8 +308,19 @@ def add_types(defs, kind):
                 if t['rmax'] and t['rmax'] > 0:
                     taps = (max(1, t['rmin']) + t['rmax']) / 2.0
                 break
+        shares, resp = [], []
+        for o in objs:
+            for g in guids_by_entry.get(o, []):
+                shares.append(spawn_share(g))
+                if go_respawn.get(g):
+                    resp.append(go_respawn[g])
+                if kind == 'ore' and g in go_pool:
+                    m = re.match(r'Mineral nodes - (.*?)( - .*)?$', pool_desc.get(go_pool[g], ''))
+                    if m and m.group(1) in zone_by_name:
+                        zone_ore_share[zone_by_name[m.group(1)]][tid].append(spawn_share(g))
         node_types.append(dict(id=tid, name=name, kind=kind, skill=skill, item=item, objs=objs,
-                               yields=yields, taps=taps, forever=forever))
+                               yields=yields, taps=taps, forever=forever,
+                               share=mean(shares) if len(shares) >= 5 else None, respawn=median(resp)))
         for o in objs:
             objmap[o] = tid
             for m, pts in spawns_by_map(obj[str(o)].get('4')).items():
@@ -330,7 +380,9 @@ for sid, v in npc.items():
             used_items.update(it for it, _ in lst)
         gold = round(((c[9] or 0) + (c[10] or 0)) / 2)
     fr = v.get('13') if v.get('13') in ('A', 'H') else ''  # friendly to one faction (guards, villagers)
-    mob_rows[nid] = '|'.join([name.replace('|', '/'), str(minl), str(maxl), str(ctype), str(rank), skin, farm, qstr, pp, str(gold), fr])
+    rs = median(creature_respawn.get(nid, []))
+    resp = str(int(rs)) if rs and int(rs) != 300 else ''  # respawn seconds; empty = 300 (most common)
+    mob_rows[nid] = '|'.join([name.replace('|', '/'), str(minl), str(maxl), str(ctype), str(rank), skin, farm, qstr, pp, str(gold), fr, resp])
     for m, pts in sp.items():
         mob_zone[m].append((nid, pts))
 
@@ -360,14 +412,20 @@ def lua_str(s):
 
 with open(os.path.join(OUT_CORE, 'NodeTypes.lua'), 'w') as f:
     f.write(HEADER + 'local _, ns = ...\n')
-    f.write('-- id = { name, kind, required skill, primary item, taps per node, forever-only, yields {itemID, expected count per node}, objectIDs }\n')
+    f.write('-- id = { name, kind, required skill, primary item, taps per node, forever-only, yields {itemID, expected count per node}, objectIDs,\n')
+    f.write('--   share = live share of its spawn points (CMaNGOS pool limits), respawn = seconds (CMaNGOS) }\n')
     f.write('ns.NodeTypes = {\n')
     for t in node_types:
         y = ','.join('{%d,%.3f}' % (k, v) for k, v in sorted(t['yields'].items(), key=lambda kv: -kv[1])[:6])
         objs = ','.join(str(o) for o in t['objs'])
-        f.write('  [%d] = { name = %s, kind = "%s", skill = %d, item = %d, taps = %.2f, forever = %s, yields = {%s}, objects = {%s} },\n'
+        extra = ''
+        if t.get('share') is not None:
+            extra += ', share = %.3f' % t['share']
+        if t.get('respawn'):
+            extra += ', respawn = %d' % t['respawn']
+        f.write('  [%d] = { name = %s, kind = "%s", skill = %d, item = %d, taps = %.2f, forever = %s, yields = {%s}, objects = {%s}%s },\n'
                 % (t['id'], lua_str(t['name']), t['kind'], t['skill'], t['item'], t['taps'],
-                   'true' if t['forever'] else 'false', y, objs))
+                   'true' if t['forever'] else 'false', y, objs, extra))
     f.write('}\n')
 
 # cave / mine names per zone from QuestieDB's area table comments (names only; positions are learned in game)
@@ -425,14 +483,17 @@ for (m, fac), pts in fac_pts.items():
 with open(os.path.join(OUT_CORE, 'Zones.lua'), 'w') as f:
     f.write(HEADER + 'local _, ns = ...\n')
     f.write('-- uiMapID = { name, minLevel, maxLevel, faction (A/H/C contested/S sanctuary), continent (K/E/I), fishSkill, caves (names),\n')
-    f.write('--   hubs = { {faction, x, y, npcs, flightPath}, ... } faction settlements from QuestieDB NPCs }\n')
+    f.write('--   hubs = { {faction, x, y, npcs, flightPath}, ... } faction settlements from QuestieDB NPCs,\n')
+    f.write('--   shares = { [nodeTypeID] = live share of its spawn points in this zone } for ore (CMaNGOS "Mineral nodes" pools) }\n')
     f.write('ns.Zones = {\n')
     for m, (n, lo, hi, fa, co) in sorted(ZONES.items()):
         fsk = fishing.get(m, (0, []))[0]
         cv = ', '.join(lua_str(x) for x in sorted(caves.get(m, [])))
         hb = ', '.join('{ "%s", %.3f, %.3f, %d, %s }' % (h[0], h[1], h[2], h[3], 'true' if h[4] else 'false') for h in hubs.get(m, []))
-        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d, caves = { %s },\n      hubs = { %s } },\n'
-                % (m, lua_str(n), lo, hi, fa, co, fsk, cv, hb))
+        zs = sorted((tid, mean(v)) for tid, v in zone_ore_share.get(m, {}).items() if len(v) >= 5)
+        os_ = (', shares = { %s }' % ', '.join('[%d] = %.3f' % (tid, v) for tid, v in zs)) if zs else ''
+        f.write('  [%d] = { name = %s, min = %d, max = %d, faction = "%s", continent = "%s", fishSkill = %d, caves = { %s },\n      hubs = { %s }%s },\n'
+                % (m, lua_str(n), lo, hi, fa, co, fsk, cv, hb, os_))
     f.write('}\n')
 
 # ---------------------------------------------------------------- write data addon
@@ -453,7 +514,7 @@ print('node spawn points', total)
 
 with open(os.path.join(OUT_DATA, 'Mobs.lua'), 'w') as f:
     f.write(HEADER + 'local D = ForagerData\n')
-    f.write('-- [npcID] = "name|minLevel|maxLevel|creatureType|rank|skin item:% ,..|farm item:% ,..|green%,blue%,epic%,greenIlvl|pickpocket item:%|avg copper|friendly to (A/H)"\n')
+    f.write('-- [npcID] = "name|minLevel|maxLevel|creatureType|rank|skin item:% ,..|farm item:% ,..|green%,blue%,epic%,greenIlvl|pickpocket item:%|avg copper|friendly to (A/H)|respawn s (empty=300)"\n')
     f.write('D.mobs = {\n')
     for nid in sorted(mob_rows):
         f.write('  [%d] = %s,\n' % (nid, lua_str(mob_rows[nid])))

@@ -32,7 +32,12 @@ Main:RegisterTab("stats", "Stats", "Interface\\Icons\\INV_Misc_Coin_02", functio
         { key = "t", label = "Time", width = 50, align = "RIGHT", get = function(r) return string.format("%dm", r.secs / 60) end, sort = function(r) return r.secs end },
         { key = "v", label = "Value", width = 66, align = "RIGHT", get = function(r) return ns.Money(r.value, true) end, sort = function(r) return r.value end },
         { key = "h", label = "Per hour", width = 66, align = "RIGHT", get = function(r) return ns.Money(r.perHour, true) end, sort = function(r) return r.perHour end },
-        { key = "z", label = "Zone", width = 96, get = function(r) return r.zone and ns.Player:ZoneName(r.zone) or "-" end },
+        { key = "e", label = "vs est.", width = 50, align = "RIGHT", get = function(r)
+            if not r.est or r.est <= 0 then return "-" end
+            local p = math.floor(r.perHour / r.est * 100 + 0.5)
+            return (p >= 100 and "|cff7fd36b" or "|cffff8040") .. p .. "%|r"
+        end, sort = function(r) return r.est and r.est > 0 and r.perHour / r.est or 0 end },
+        { key = "z", label = "Zone", width = 96, get = function(r) return r.spot or (r.zone and ns.Player:ZoneName(r.zone)) or "-" end },
     }
     local sessions = UI.Table(panel, sessCols, 9)
     sessions:SetPoint("TOPLEFT", items, "TOPRIGHT", 14, 0)
@@ -53,9 +58,11 @@ Main:RegisterTab("stats", "Stats", "Interface\\Icons\\INV_Misc_Coin_02", functio
     function panel:OnActivate()
         local s = ns.Capture.session
         local perHour, secs = ns.Capture:SessionPerHour()
-        sess:SetText(string.format("|cffffd100This session|r  %s\nValue: %s  ·  %s/hour\nGathers: %d  ·  Kills looted: %d  ·  Coin: %s",
-            s.start and (math.floor((secs or 0) / 60) .. " min") or "(starts at your first gather/loot)",
-            ns.Money(s.value), ns.Money(perHour), s.gathers, s.kills, ns.Money(s.money)))
+        local est = s.est and s.est > 0 and string.format("  ·  estimate %s/h", ns.Money(s.est, true)) or ""
+        sess:SetText(string.format("|cffffd100This session|r  %s%s%s\nValue: %s  ·  %s/hour%s\nGathers: %d  ·  Kills looted: %d  ·  Coin: %s",
+            s.start and (math.floor((secs or 0) / 60) .. " min active") or "(starts at your first gather/loot)",
+            s.paused and "  |cff9d9d9d(paused: idle)|r" or "", s.label and ("  ·  " .. s.label) or "",
+            ns.Money(s.value), ns.Money(perHour), est, s.gathers, s.kills, ns.Money(s.money)))
         local rows = {}
         for id, n in pairs(ns.db.stats.items) do
             rows[#rows + 1] = { id = id, n = n, s = s.items[id] or 0, v = ns.Prices:Get(id) * n }

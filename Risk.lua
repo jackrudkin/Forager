@@ -94,38 +94,66 @@ end
 -------------------------------------------------------------------------------
 -- assessment
 -------------------------------------------------------------------------------
-local zoneMobs = {} -- [uiMap] = { {x, y, lvl, elite}, ... } (static data, built once)
+local zoneMobs, zoneMobsN = {}, 0 -- [faction..uiMap] = flat { x, y, level, elite(0/1), ... }
 local function mobsOf(uiMap)
     local key = P:Faction() .. uiMap
     local list = zoneMobs[key]
     if list then return list end
+    if zoneMobsN >= 16 then wipe(zoneMobs) zoneMobsN = 0 end -- memory cap: rebuilt on demand
     list = {}
+    local n = 0
     for npc, flat in pairs(DS:GetZoneMobs(uiMap)) do
         local m = DS:GetMob(npc)
         if m and not DS:IsFriendly(m) then
-            local elite = m.rank == 1 or m.rank == 2 or m.rank == 3
-            for i = 1, #flat, 2 do list[#list + 1] = { flat[i], flat[i + 1], m.maxLevel, elite } end
+            local elite = (m.rank == 1 or m.rank == 2 or m.rank == 3) and 1 or 0
+            for i = 1, #flat, 2 do
+                list[n + 1], list[n + 2], list[n + 3], list[n + 4] = flat[i], flat[i + 1], m.maxLevel, elite
+                n = n + 4
+            end
         end
     end
     zoneMobs[key] = list
+    zoneMobsN = zoneMobsN + 1
     return list
 end
+
+-- Hardcore (Forever's winter roadmap): Realistic spots get stricter. Thresholds are the risk labels:
+-- death risk Low only, no mob above your level + 1, no elites, gank risk below High.
+Risk.REALISTIC_HC = { above = 1, death = 20, hyper = 40, pve = 40, gank = 40 }
+
+--- Is this a Hardcore character? (C_GameRules.IsHardcoreActive, or the setting.)
+function Risk:IsHardcore()
+    local s = ns.settings and ns.settings.hardcore
+    if s == "on" then return true elseif s == "off" then return false end
+    if Risk.hc == nil then
+        local ok, v = false, nil
+        if C_GameRules and C_GameRules.IsHardcoreActive then ok, v = pcall(C_GameRules.IsHardcoreActive) end
+        Risk.hc = ok and ns.Safe(v) == true or false
+    end
+    return Risk.hc
+end
+
+--- Realistic thresholds for this character.
+function Risk:Profile() return Risk:IsHardcore() and Risk.REALISTIC_HC or Risk.REALISTIC end
 
 --- Too hard to fight solo in Realistic mode: elite, or more than 2 levels above you.
 function Risk.TooHard(m, level)
     local elite = m.rank == 1 or m.rank == 2 or m.rank == 3
-    return elite or (m.maxLevel or 0) > (level or 1) + Risk.REALISTIC.above
+    return elite or (m.maxLevel or 0) > (level or 1) + Risk:Profile().above
 end
 
-local unsafeCache = {}
+local unsafeCache, unsafeN = {}, 0
+function Risk:Flush() wipe(zoneMobs) wipe(unsafeCache) zoneMobsN, unsafeN = 0, 0 end
 --- Grid cells (g x g, index cy * g + cx) that Realistic mode avoids: within 2% of the map of a mob
 --- that is too hard (orange/red/skull or elite), or within 300 yd of an enemy settlement on PvP.
 function Risk:UnsafeCells(uiMap, g, level)
     level = level or P:Level()
     local ruleset = Risk:Ruleset()
-    local key = table.concat({ P:Faction(), uiMap, g, level, ruleset }, ":")
+    local key = table.concat({ P:Faction(), uiMap, g, level, ruleset, Risk:IsHardcore() and "hc" or "" }, ":")
     local cells = unsafeCache[key]
     if cells then return cells end
+    if unsafeN >= 64 then wipe(unsafeCache) unsafeN = 0 end
+    unsafeN = unsafeN + 1
     cells = {}
     local m = 0.02
     local function mark(x1, y1, x2, y2)
@@ -133,9 +161,10 @@ function Risk:UnsafeCells(uiMap, g, level)
         local cx2, cy2 = math.min(g - 1, math.floor(x2 * g)), math.min(g - 1, math.floor(y2 * g))
         for cy = cy1, cy2 do for cx = cx1, cx2 do cells[cy * g + cx] = true end end
     end
-    local limit = level + Risk.REALISTIC.above
-    for _, p in ipairs(mobsOf(uiMap)) do
-        if p[4] or p[3] > limit then mark(p[1] - m, p[2] - m, p[1] + m, p[2] + m) end
+    local limit = level + Risk:Profile().above
+    local L = mobsOf(uiMap)
+    for i = 1, #L, 4 do
+        if L[i + 3] == 1 or L[i + 2] > limit then mark(L[i] - m, L[i + 1] - m, L[i] + m, L[i + 1] + m) end
     end
     local zone = ns.Zones[uiMap]
     if ruleset == "pvp" and zone and zone.faction ~= "S" then
@@ -158,7 +187,7 @@ end
 function Risk:RealisticCheck(r)
     local d = r and r.danger
     if not d then return true, {} end
-    local R, why = Risk.REALISTIC, {}
+    local R, why = Risk:Profile(), {}
     if (d.maxAbove or 0) > R.above then why[#why + 1] = string.format("mobs up to %d levels above you", d.maxAbove) end
     if (d.elites or 0) > 0 then why[#why + 1] = "elites" end
     if d.death >= R.death then why[#why + 1] = "death risk " .. Risk:Label(d.death):lower() end
@@ -267,13 +296,15 @@ function Risk:Assess(r)
         local x1, y1, x2, y2 = rect[1] - m, rect[2] - m, rect[3] + m, rect[4] + m
         local grey = greyBelow(level)
         local inArea, maxLvl, elites = {}, 0, 0
-        for _, p in ipairs(mobsOf(r.uiMap)) do
-            if p[1] >= x1 and p[1] <= x2 and p[2] >= y1 and p[2] <= y2 then
-                if p[4] then
+        local L = mobsOf(r.uiMap)
+        for i = 1, #L, 4 do
+            local px, py, lvl = L[i], L[i + 1], L[i + 2]
+            if px >= x1 and px <= x2 and py >= y1 and py <= y2 then
+                if L[i + 3] == 1 then
                     elites = elites + 1
-                elseif p[3] > grey then
-                    inArea[#inArea + 1] = p
-                    if p[3] > maxLvl then maxLvl = p[3] end
+                elseif lvl > grey then
+                    inArea[#inArea + 1] = { px, py, lvl }
+                    if lvl > maxLvl then maxLvl = lvl end
                 end
             end
         end
@@ -384,6 +415,12 @@ end
 
 function Risk:Init()
     ns:On("PLAYER_DEAD", function() Risk:RecordDeath() end)
+    -- first login on a Hardcore character: Realistic spots on (stricter), once
+    if Risk:IsHardcore() and not ns.char.hcSeen then
+        ns.char.hcSeen = true
+        ns.settings.realistic = true
+        ns:Print("Hardcore character: Realistic spots is on and stricter (no mob above your level + 1, no elites, death risk Low).")
+    end
     local learn = function() ns.After(2, function() Risk:LearnRuleset() end) end
     ns:On("ZONE_CHANGED_NEW_AREA", learn)
     ns:On("PLAYER_ENTERING_WORLD", learn)

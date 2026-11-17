@@ -3,9 +3,23 @@ local _, ns = ...
 local DS = {}
 ns.DS = DS
 
-local zoneNodeCache = {}   -- [uiMap] = array of nodes (bundled+learned+shared), rebuilt on change
-local zoneMobCache = {}    -- [uiMap] = { [npcID] = {pts} }
-local mobCache = {}        -- [npcID] = decoded mob
+-- Decoded caches are capped (memory): when full they are emptied and rebuilt on demand.
+local zoneNodeCache, nodeZones = {}, 0   -- [uiMap] = array of nodes (bundled+learned+shared), rebuilt on change
+local zoneMobCache, mobZones = {}, 0     -- [uiMap] = { [npcID] = {x1,y1,x2,y2,...} }
+local mobCache, mobCount = {}, 0         -- [npcID] = decoded mob (false = not in the data)
+DS.CAP_NODE_ZONES, DS.CAP_MOB_ZONES, DS.CAP_MOBS = 12, 16, 1500
+
+--- Cache sizes (for /forage selftest and tests).
+function DS:CacheSizes() return nodeZones, mobZones, mobCount end
+
+--- Empty every decoded cache (they rebuild on demand). Called when Forager has been idle a while.
+function DS:Flush()
+    wipe(zoneNodeCache) wipe(zoneMobCache) wipe(mobCache)
+    nodeZones, mobZones, mobCount = 0, 0, 0
+    if ns.Risk and ns.Risk.Flush then ns.Risk:Flush() end
+    if ns.Finder and ns.Finder.FlushCache then ns.Finder:FlushCache() end
+    if ns.Combo and ns.Combo.FlushCache then ns.Combo:FlushCache() end
+end
 local objectToType = {}
 
 for id, t in pairs(ns.NodeTypes) do
@@ -17,6 +31,14 @@ for id, t in pairs(ns.NodeTypes) do
     if t.item and t.item > 0 and not t.forever and not itemToType[t.item] then itemToType[t.item] = id end
 end
 DS.objectToType = objectToType
+-- herb seed tiers: node type names per tier (from the object lists)
+for _, sd in ipairs(ns.HerbSeeds or {}) do
+    sd.from = {}
+    for _, o in ipairs(sd.objects or {}) do
+        local t = objectToType[o] and ns.NodeTypes[objectToType[o]]
+        if t then sd.from[t.name] = true end
+    end
+end
 
 --- Load the bundled data addon (allowed out of combat only).
 function DS:Load()
@@ -76,13 +98,19 @@ local function addPoint(list, x, y, t, src, rec, key)
 end
 
 function DS:Invalidate(uiMap)
-    if uiMap then zoneNodeCache[uiMap] = nil else wipe(zoneNodeCache) end
+    if uiMap then
+        if zoneNodeCache[uiMap] then zoneNodeCache[uiMap] = nil nodeZones = nodeZones - 1 end
+    else
+        wipe(zoneNodeCache) nodeZones = 0
+    end
+    ns.gen = (ns.gen or 0) + 1
 end
 
 --- All known node points in a zone. Learned points suppress bundled points of the same type within ~1%.
 function DS:GetZoneNodes(uiMap)
     local cached = zoneNodeCache[uiMap]
     if cached then return cached end
+    if nodeZones >= DS.CAP_NODE_ZONES then wipe(zoneNodeCache) nodeZones = 0 end
     local list = {}
     local learned = ns.db.nodes[uiMap]
     local occupied = {}
@@ -117,6 +145,7 @@ function DS:GetZoneNodes(uiMap)
         end
     end
     zoneNodeCache[uiMap] = list
+    nodeZones = nodeZones + 1
     return list
 end
 
@@ -147,15 +176,51 @@ function DS:IsFriendly(m)
     return m and m.friendly ~= nil and m.friendly == ns.Player:Faction()
 end
 
+local zoneNames = {}
+local english = (GetLocale and (GetLocale() == "enUS" or GetLocale() == "enGB")) or not GetLocale
+--- Zone name in the client's language (bundled names are English).
+function DS:ZoneName(uiMap)
+    if not uiMap then return "?" end
+    local n = zoneNames[uiMap]
+    if n then return n end
+    local z = ns.Zones[uiMap]
+    if not english or not z then
+        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(uiMap)
+        n = info and ns.Safe(info.name)
+    end
+    n = n or (z and z.name) or ("Map " .. tostring(uiMap))
+    zoneNames[uiMap] = n
+    return n
+end
+
+--- Live share of a node type's spawn points (spawn-pool data for the zone or the type), else the setting.
+function DS:LiveShare(t, uiMap)
+    local s = ns.settings
+    if t and s.spawnData ~= false then
+        local z = uiMap and ns.Zones[uiMap]
+        local v = (z and z.shares and z.shares[t.id]) or t.share
+        if v then return v end
+    end
+    return s.activeFraction or 0.3
+end
+
+--- Respawn seconds of a decoded mob (spawn data), else the fallback.
+function DS:MobRespawn(m, fallback)
+    if m and m.respawn and ns.settings.spawnData ~= false then return m.respawn end
+    return fallback or 300
+end
+
 --- Drop decoded mobs (own skin data or Scarce rates changed).
-function DS:InvalidateMobs() wipe(mobCache) end
+function DS:InvalidateMobs() wipe(mobCache) mobCount = 0 end
 
 function DS:GetMob(npcID)
     if not npcID then return nil end
     local mn = ns.settings and ns.settings.minSamples
-    if mn ~= DS.mobCacheMin then wipe(mobCache) DS.mobCacheMin = mn end
+    if mn ~= DS.mobCacheMin then wipe(mobCache) mobCount = 0 DS.mobCacheMin = mn end
     local m = mobCache[npcID]
     if m ~= nil then return m or nil end
+    if mobCount >= DS.CAP_MOBS then wipe(mobCache) mobCount = 0 end
+    mobCount = mobCount + 1
     local s = ForagerData and ForagerData.mobs and ForagerData.mobs[npcID]
     if not s then mobCache[npcID] = false return nil end
     local f = { strsplit("|", s) }
@@ -165,6 +230,7 @@ function DS:GetMob(npcID)
         skinnable = f[6] ~= nil and f[6] ~= "", skin = parseList(f[6]), farm = parseList(f[7]),
         pickpocket = parseList(f[9]), copper = tonumber(f[10]) or 0,
         friendly = (f[11] == "A" or f[11] == "H") and f[11] or nil,
+        respawn = tonumber(f[12]) or 300,
     }
     if f[8] and f[8] ~= "" then
         local g, b, e, il = strsplit(",", f[8])
@@ -182,6 +248,7 @@ end
 function DS:GetZoneMobs(uiMap)
     local c = zoneMobCache[uiMap]
     if c then return c end
+    if mobZones >= DS.CAP_MOB_ZONES then wipe(zoneMobCache) mobZones = 0 end
     c = {}
     local str = ForagerData and ForagerData.mobSpawns and ForagerData.mobSpawns[uiMap]
     if str then
@@ -198,6 +265,7 @@ function DS:GetZoneMobs(uiMap)
         end
     end
     zoneMobCache[uiMap] = c
+    mobZones = mobZones + 1
     return c
 end
 
@@ -221,7 +289,7 @@ function DS:ItemName(itemID)
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
     if b then return b[1] end
     if ns.EnchantNames[itemID] then return ns.EnchantNames[itemID] end
-    if ns.Scarce[itemID] then return ns.Scarce[itemID].name end
+    if ns.KnownItems[itemID] then return ns.KnownItems[itemID][1] end
     if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemID) end
     return "item:" .. itemID
 end
@@ -246,7 +314,7 @@ function DS:ItemVendor(itemID)
         if sell and sell > 0 then return sell end
     end
     local b = ForagerData and ForagerData.items and ForagerData.items[itemID]
-    if not b and ns.Scarce[itemID] then return ns.Scarce[itemID].vendor end
+    if not b and ns.KnownItems[itemID] then return ns.KnownItems[itemID][2] end
     return b and b[3] or 0
 end
 
