@@ -217,9 +217,9 @@ In the Farm tab, **Search in** picks the scope: **Everywhere** (zones for your l
 (Ornery Plainstrider, level 17)
 
 ```
-Skinnable 70 (you 85)                           Classic est. | me n=4
-  Light Leather 74% · Medium Leather 19% · Light Hide 5.1% · Medium Hide 1.7%
-Drops                                           Classic est.
+Skinnable 70 (you 85)                           estimate | me n=4
+  Light Leather 74% · Medium Leather 19% · Light Hide 5.1% · Pristine Leather 2.9%
+Drops                                           estimate
   Strider Meat 40% · Shadowgem 0.34%
 Gear: 2% · 0% · 0%   (green · blue · purple)        Classic est.
   Green (ilvl ~18) DE: Strange Dust ≈ 4s 20c
@@ -227,7 +227,8 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 ```
 
 - The required skinning skill uses the Forever formula: level 1-10 → 1; 11-20 → (level − 10) × 10; 21+ → level × 5. It's coloured against your skill.
-- Your own observations replace the Classic estimate once the sample reaches the threshold (default n = 30). Until then both are shown. Mobs with no data show `learning (n=…)`; numbers are never invented.
+- Skin lists include Forever's Pristine Leather for beasts level 10–26 (see [Data sources & accuracy](#data-sources--accuracy)).
+- Your own observations replace the estimate once the sample reaches the threshold (default n = 30). Until then both are shown. Mobs with no data show `learning (n=…)`; numbers are never invented.
 - If a value comes back secret (in restricted content), the lines are simply skipped.
 
 ## Slash commands
