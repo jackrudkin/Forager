@@ -46,7 +46,6 @@ local DEFAULT_SETTINGS = {
     readyCheck = true,           -- warn when tracking is off or the Mining Pick / Skinning Knife is missing
     coolStops = true,            -- route skips stops you gathered until they can be back
     afkPause = true,             -- session clock pauses when AFK or idle for 3 minutes
-    detectNodes = true,          -- save nodes you point at on the minimap or face in the world
     -- prices
     priceSources = { "AuctionTrends", "Auctionator", "TSM", "Vendor" },
     tsmPrice = "dbmarket",       -- TradeSkillMaster price string when TSM is a source

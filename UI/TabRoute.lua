@@ -88,16 +88,6 @@ Main:RegisterTab("route", "Route & Map", "Interface\\Icons\\INV_Misc_Map_01", fu
             return
         end
         local r = a.result
-        if a.roam then
-            local tg, td = ns.Roam:Target()
-            info:SetText(string.format("%s  ·  %s", ns.L[ns.Roam.GOALS[r.goal].label], r.zoneName or "?"))
-            info2:SetText(string.format(ns.L["%d gathered · %d checked"], a.gathered, a.nChecked) .. "  ·  "
-                .. string.format(ns.L["%d seen on the minimap"], a.seen) .. "  ·  "
-                .. (tg and string.format("%s %d yd", (ns.DS:GetType(tg.t) or {}).name or "?", td or 0) or ns.L["no spot nearby"]))
-            preview:SetResult(nil)
-            tbl:SetData({}, false, ns.L["Free roam has no stops: follow the arrow."])
-            return
-        end
         local _, d, prog, loops = ns.Route:Next()
         info:SetText(string.format("%s  ·  %s%s  ·  |cffffd100%s|r", ns.Finder:GoalInfo(r.goal).label, r.areaName and (r.areaName .. ", ") or "", r.zoneName or "?", Main:RateText(r)))
         info2:SetText(string.format("%d stops  ·  %d yd loop (~%s)  ·  loop %d, %d%%  ·  next stop %s", #a.route.points, a.route.length or 0,

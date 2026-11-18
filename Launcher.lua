@@ -21,15 +21,13 @@ local function tooltip(owner)
     local perHour = ns.Capture:SessionPerHour()
     if ns.Capture.session.start then GameTooltip:AddLine("Session: " .. ns.Money(ns.Capture.session.value) .. "  (" .. ns.Money(perHour, true) .. "/h)", 1, 1, 1) end
     GameTooltip:AddLine("Left-click: open  ·  Right-click: Start farming", 0.7, 0.7, 0.7)
-    GameTooltip:AddLine("Ctrl-right-click: free roam  ·  Shift-right-click: stop  ·  Drag: move", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Shift-right-click: stop route  ·  Drag: move", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
 
 local function onClick(_, btn)
     if btn == "RightButton" then
-        if IsShiftKeyDown() then ns.Route:Stop()
-        elseif IsControlKeyDown and IsControlKeyDown() then ns.Roam:Toggle()
-        else ns.Main:StartFarming() end
+        if IsShiftKeyDown() then ns.Route:Stop() else ns.Main:StartFarming() end
     else
         ns.Main:Toggle()
     end
@@ -97,7 +95,6 @@ local HELP = {
     "/forage farm | combo | mobs | route | nodes | stats | settings - open a tab",
     "/forage map - open the world map at your farm spot",
     "/forage caves - caves known in this zone",
-    "/forage roam [herb|ore|both] - free roam: gather anywhere, the arrow points to the nearest likely node",
     "/forage diag - diagnostics (paste this when reporting a problem)",
     "/forage selftest - check data, game APIs, search speed and memory",
     "/forage errors [clear] - errors Forager caught (paste these when reporting a problem)",
@@ -156,13 +153,6 @@ local function slash(msg)
         end
         local cur = ns.Caves:PlayerCave()
         if cur then DEFAULT_CHAT_FRAME:AddMessage("  You are in: " .. cur) end
-    elseif cmd == "roam" or cmd == "free" then
-        local k = rest:lower()
-        if k == "stop" or k == "off" then ns.Route:Stop()
-        else
-            k = ({ herb = "herb", herbs = "herb", herbalism = "herb", ore = "ore", mining = "ore", mine = "ore", both = "both" })[k]
-            ns.Roam:Start(k)
-        end
     elseif cmd == "diag" then ns.Diag()
     elseif cmd == "selftest" or cmd == "test" then ns.SelfTest()
     elseif cmd == "errors" then
@@ -359,7 +349,6 @@ ns:On("PLAYER_LOGIN", function()
     ns.Overlay:Init()
     ns.Tooltip:Init()
     ns.Tracking:Init()
-    ns.Detect:Init()
     createButton()
     local ldb = LibStub("LibDataBroker-1.1", true)
     if ldb then

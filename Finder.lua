@@ -24,7 +24,6 @@ for k, g in pairs(COMBO) do g.key, g.kind = k, "combo" end
 function Finder:GoalInfo(key)
     if ns.GoalByKey[key] then return ns.GoalByKey[key] end
     if COMBO[key] then return COMBO[key] end
-    if ns.Roam and ns.Roam.GOALS[key] then return ns.Roam.GOALS[key] end
     local id = type(key) == "string" and tonumber(key:match("^item:(%d+)$"))
     if id then
         return { key = key, label = DS:ItemName(id), kind = "item", item = id,

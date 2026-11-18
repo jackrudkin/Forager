@@ -88,8 +88,6 @@ Main:RegisterTab("settings", "Settings", "Interface\\Icons\\Trade_Engineering", 
     A.check(3, "Skip stops you just gathered", "coolStops",
         "The route arrow skips stops whose node you gathered until it can have respawned (spawn data, or faster if you have seen it back sooner).")
     A.check(3, "Pause the session clock when idle", "afkPause", "Session gold/hour counts active time only: AFK or 3 minutes without moving, looting or fighting pauses the clock.")
-    A.check(3, "Save nodes I point at", "detectNodes",
-        "Hover a herb or ore dot on the minimap, or face a node in the world: Forager saves it as a spawn point (no yields) so free roam and the rankings know it exists. Free roam locks on to hovered dots either way.")
 
     ---------------------------------------------------------------------------
     -- page 2: estimates

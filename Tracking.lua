@@ -71,9 +71,7 @@ end
 function Tracking.Needs(r)
     local need = {}
     if not r then return need end
-    if r.source == "roam" then
-        if r.roam == "both" then need.herb, need.ore = true, true else need[r.roam] = true end
-    elseif r.source == "combo" then
+    if r.source == "combo" then
         for k in pairs((ns.Combo.KINDS or {})[r.gather] or {}) do need[k] = true end
         if r.killFor == "skin" or (r.skinsPerHour or 0) > 0 then need.skin = true end
     elseif r.source == "node" then

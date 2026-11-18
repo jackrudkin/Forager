@@ -161,16 +161,10 @@ function Main:Create()
     card.map:SetPoint("BOTTOMLEFT", 6, 6)
     card.stop = UI.Button(card, "Stop", 66, function() ns.Route:Stop() end)
     card.stop:SetPoint("BOTTOMRIGHT", -6, 6)
-    card.idle = UI.Muted(card, ns.L["Start the best spot for your goal, or roam freely and get pointed to nodes."])
+    card.idle = UI.Muted(card, "Pick something in Farm and press Start farming, or right-click the minimap button.")
     card.idle:SetPoint("TOPLEFT", 8, -24)
     card.idle:SetPoint("RIGHT", -8, 0)
     card.idle:SetJustifyV("TOP")
-    card.best = UI.Button(card, ns.L["Best spot"], 66, function() Main:StartFarming() end)
-    card.best:SetPoint("BOTTOMLEFT", 6, 6)
-    UI.AttachTip(card.best, ns.L["Best spot"], ns.L["Start farming the best spot for your Farm goal, with a route."])
-    card.roam = UI.Button(card, ns.L["Free roam"], 66, function() ns.Roam:Start() end)
-    card.roam:SetPoint("BOTTOMRIGHT", -6, 6)
-    UI.AttachTip(card.roam, ns.L["Free roam"], ns.L["Gather anywhere without a route: the arrow points to the nearest likely herb or ore node and locks on to dots you hover on the minimap. Every node you gather or point at is saved. Herbs or ore follow your Farm goal; /forage roam herb|ore|both picks one."])
     self.card = card
 
     -- content + status ---------------------------------------------------------
@@ -248,18 +242,7 @@ function Main:UpdateStatus()
     if not self.frame then return end
     -- now farming card
     local card, a = self.card, ns.Route.active
-    card.best:SetShown(not a)
-    card.roam:SetShown(not a)
-    if a and a.roam then
-        local g = ns.Roam.GOALS[a.result.goal]
-        card.icon:SetTexture(g.icon)
-        card.goal:SetText(ns.L[g.label])
-        card.zone:SetText(a.result.zoneName or "")
-        card.rate:SetText(string.format(ns.L["%d gathered · %d checked"], a.gathered, a.nChecked) .. "\n"
-            .. string.format(ns.L["%d seen on the minimap"], a.seen))
-        for _, w in ipairs({ card.icon, card.goal, card.zone, card.rate, card.map, card.stop }) do w:Show() end
-        card.idle:Hide()
-    elseif a then
+    if a then
         local r = a.result
         local g = ns.Finder:GoalInfo(r.goal)
         card.icon:SetTexture(g.icon)

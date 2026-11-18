@@ -4,19 +4,9 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
-## What's new in 2.2: free roam
+## 2.2.1: free roam removed
 
-Farm a profession without a route: the HUD arrow points you to nodes. Start it with the **Free roam** button on the window's card, `/forage roam [herb|ore|both]`, or Ctrl-right-click on the minimap button. Stop it with **Stop** or `/forage roam stop`.
-
-| Feature | How it works |
-|---|---|
-| Arrow to the next node | Points to the nearest likely spawn point of a node you can gather (bundled data, your finds, shared and imported nodes). Closer spots and node types that are up more often come first. Spots you pass within 30 yd count as checked and are skipped until they could have respawned. Gathering a node cools the spots around it. |
-| Locks on to minimap dots | Hover a herb or ore dot on your minimap: the arrow switches to that dot for 2 minutes or until you reach it. It's saved at that position, worked out from the dot's offset and the minimap's zoom, to within about 15 yd. Works with Rotate Minimap on. |
-| Nodes in front of you | When the game's soft target picks a herb or vein, Forager saves it at your position and learns its name in your client's language. |
-| Fills the database | Every node you gather, hover or face is saved as a spawn point, without yields until you gather it. These nodes are shared with your guild/party if sharing is on, and used by the Farm rankings and routes. This is how the new zones (no open node data) fill in. Turn it off in Settings → Maps & farming → **Save nodes I point at**. |
-| Follows you | Carries on across zone changes. Herbs, ore or both follow your Farm goal, else your professions. The tracking switcher and ready check know which tracking you need. |
-
-**Why a new dot doesn't trigger the arrow by itself:** no game API lists the minimap's tracking dots. NodeRadar's page says the November 2026 Forever update stopped addons reading the minimap in the background. NodeRadar 3.0 works around this by moving the minimap under your cursor for a split second, which makes it blink. Forager reads a dot only when you hover it, so nothing blinks and nothing is moved.
+2.2.0's free roam is gone. Its arrow could only lock on to a minimap dot after you hovered it, because Forever gives addons no dependable way to see minimap dots on their own. Everything else is as in 2.1.
 
 ## What's new in 2.1: Forever's new zones
 
@@ -197,7 +187,7 @@ Forager draws no node pins. Live nodes show through the game's own tracking (Fin
 
 ## Window (`/forage`)
 
-The sidebar has seven tabs. Below them, the **Now farming** card shows the active farm with **Map** and **Stop** buttons; with nothing running it offers **Best spot** and **Free roam**. The status bar at the bottom shows your search scope, session gold/hour and price sources.
+The sidebar has seven tabs. Below them, the **Now farming** card shows the active farm with **Map** and **Stop** buttons. The status bar at the bottom shows your search scope, session gold/hour and price sources.
 
 | Tab | What's there |
 |---|---|
@@ -207,9 +197,9 @@ The sidebar has seven tabs. Below them, the **Now farming** card shows the activ
 | **Route & Map** | The active farm: zone preview, stops with coords, target and leg length, loop length/time, loop number and progress. Buttons: Open world map at farm, Skip stop, Restart here, Waypoint, Stop. Map options: route on the world map, route on the minimap (Off / Next stops / Whole loop), farm area outline, route HUD, game map pin and TomTom arrow when starting. |
 | **Nodes** | Per-zone node database (what the finder ranks). Columns: Node, Type, Skill, Database spawns, Learned, Shared, Gathered, Value/node; hover for yields. Also: Import GatherMate2/GatherLite, Forget learned nodes in zone. |
 | **Stats** | This session (active time, value, gold/hour vs the farm's estimate, gathers, kills, coin) with **New session**. Every item you gathered or looted, last 30 sessions with each one's result vs its estimate, data health, **Save now** and **Backup now**. |
-| **Settings** | Three pages. **Maps & farming**: route on world map / minimap, area outline, hide in combat/instances, opacity, HUD, map pin, TomTom, enemy zones, elites, ruleset, risk filter, farming helpers (tracking switcher, re-track after death, ready check, skip cooling stops, idle-paused clock, save nodes I point at). **Estimates**: spawn-pool data, fallback live share, estimate weight, extra seconds per node, fishing casts, Bountiful Harvest rank, kills per hour, travel speed, what's been measured from your play, net gold (AH cut + repairs), calibration. **Tooltips, prices & more**: tooltip parts (incl. best spot on item tooltips), price source order, TSM price, sharing, minimap button, save reminder, debug, **Self-test**, **Diagnostics**. |
+| **Settings** | Three pages. **Maps & farming**: route on world map / minimap, area outline, hide in combat/instances, opacity, HUD, map pin, TomTom, enemy zones, elites, ruleset, risk filter, farming helpers (tracking switcher, re-track after death, ready check, skip cooling stops, idle-paused clock). **Estimates**: spawn-pool data, fallback live share, estimate weight, extra seconds per node, fishing casts, Bountiful Harvest rank, kills per hour, travel speed, what's been measured from your play, net gold (AH cut + repairs), calibration. **Tooltips, prices & more**: tooltip parts (incl. best spot on item tooltips), price source order, TSM price, sharing, minimap button, save reminder, debug, **Self-test**, **Diagnostics**. |
 
-There is also a minimap button (left-click: window; right-click: Start farming; Ctrl-right-click: free roam; shift-right-click: stop), an addon compartment entry and an LDB launcher.
+There is also a minimap button (left-click: window; right-click: Start farming; shift-right-click: stop), an addon compartment entry and an LDB launcher.
 
 ## Caves & mines
 
@@ -337,7 +327,6 @@ Pick pocket: Battered Junkbox 15%               (Rogues)
 | `/forage` (or `/forager`) | Open/close the window |
 | `/forage start [goal or item]` | Best spot now. Goals: herb ore skin fish cloth greens leather meat elemental lockbox gold, or an item name (`/forage start copper ore`) |
 | `/forage stop` | Stop the route |
-| `/forage roam` [`herb` / `ore` / `both` / `stop`] | Free roam: arrow to the nearest likely node, no route |
 | `/forage farm` / `combo` / `mobs` / `route` / `nodes` / `stats` / `settings` | Open that tab |
 | `/forage map` | Open the world map at your farm |
 | `/forage caves` | Caves in this zone, cells you've walked, whether you're in one |
@@ -427,7 +416,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 56 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 54 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -439,8 +428,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
   - accuracy (1.7): Forever herb colours and Dreamfoil, time per node from cast times × gathers per vein, measured casts and loot windows (interrupts ignored), one visit per vein, learned yields and pooled Scarce rates, Pristine Leather band, own skins with quantities, TSM price source, v4 → v5 upgrade;
   - Realistic spots (1.8): orange/elite mobs excluded, every kept spot passes the rules (Farm ore/skinning/gold, Gather + Kill, PvP ruleset), spots still found at level 25, setting, slash command, UI;
   - item tooltips (1.9): game tooltip + Forager price, loot/coin/gear entries, every item hover area in Farm and Gather + Kill, search suggestions;
-  - 2.0: spawn-pool shares and mob respawns, blending (yields, skins, Bountiful Harvest rescaling), fights → kills per hour, measured speed, AFK/idle clock, AH cut, repairs per kill, calibration and farm sessions, tracking ready check / fix / switcher / re-track after death / tools in bags, cooling stops, hotfix notes, Hardcore profile, herb seeds, error log, pruning, time-sliced jobs and the result cache, item tooltip best spot and Alt+Shift+click, self-test, settings pages, translation tables, memory budget and cache caps;
-  - 2.1 / 2.2: new-zone trace NPCs and own loot for new NPCs; free roam (target, checked and cooling spots, minimap hover lock-on at the right position with and without Rotate Minimap, soft-target saving and name learning, setting off, slash commands, card and Route tab).
+  - 2.0: spawn-pool shares and mob respawns, blending (yields, skins, Bountiful Harvest rescaling), fights → kills per hour, measured speed, AFK/idle clock, AH cut, repairs per kill, calibration and farm sessions, tracking ready check / fix / switcher / re-track after death / tools in bags, cooling stops, hotfix notes, Hardcore profile, herb seeds, error log, pruning, time-sliced jobs and the result cache, item tooltip best spot and Alt+Shift+click, self-test, settings pages, translation tables, memory budget and cache caps.
 
   Run with `lua5.1 tests/run_tests.lua . Forager_Data Forager_Backup`.
 - `luacheck .` is clean (config in `.luacheckrc`).
@@ -489,8 +477,6 @@ Not changed, because no better data was found: node spawn positions (Forever red
 | `GetRepairAllCost` at a merchant | Repairs per kill | Repairs not counted |
 | `C_GameRules.IsHardcoreActive` | Hardcore detection | Treated as not Hardcore |
 | `HandleModifiedItemClick`, `TooltipDataProcessor` item post-call | Alt+Shift+click, best spot on item tooltips | No item tooltip lines; click does nothing |
-| Minimap tooltip on hover (`GameTooltip` owned by `Minimap`, `GetCursorPosition`, `C_Minimap.GetViewRadius`) | Free roam lock-on, saving hovered dots | Hovering does nothing; the arrow still points to likely spots |
-| `PLAYER_SOFT_INTERACT_CHANGED`, `UnitGUID("softinteract")` on gathering nodes | Saving nodes you face | Nodes are saved only when gathered or hovered |
 | `UnitIsAFK`, `UnitOnTaxi`, `IsMounted`, `IsSwimming` | Idle clock, speed samples | Clock counts all time; speed samples less precise |
 
 ## Credits & licence
