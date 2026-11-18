@@ -15,8 +15,11 @@ local function zoneItems(includeOff, includeAuto)
     local list = {}
     for id, z in pairs(ns.Zones) do if z.faction ~= "S" then list[#list + 1] = { id = id, z = z } end end
     table.sort(list, function(a, b) if a.z.min ~= b.z.min then return a.z.min < b.z.min end return a.z.name < b.z.name end)
+    local loaded = ns.DS:HasBundled()
     for _, e in ipairs(list) do
-        items[#items + 1] = { text = string.format("%s |cff9d9d9d(%d-%d)|r", ns.DS:ZoneName(e.id), e.z.min, e.z.max), value = e.id }
+        -- Forever's new zones: no herb/ore spawn data yet (only what you gather)
+        local note = (loaded and not ns.DS:HasZoneNodeData(e.id)) and " |cffe6a23cnew|r" or ""
+        items[#items + 1] = { text = string.format("%s |cff9d9d9d(%d-%d)|r%s", ns.DS:ZoneName(e.id), e.z.min, e.z.max, note), value = e.id }
     end
     return items
 end

@@ -23,6 +23,7 @@ local fight, lastFight    -- { start, stop, kills, down } current / previous fig
 local fightEnd            -- GetTime() the previous fight ended (downtime is measured from here)
 local repairStart         -- repair cost when a merchant opened
 local corpseCount = 0
+local corpsesThisLoot = {}  -- npcIDs of the corpses in the open loot window (coin is shared between them)
 
 function Capture:Activity() lastActivity = GetTime() end
 
@@ -85,9 +86,19 @@ function Capture:Init()
     ns:On("PLAYER_MONEY", function()
         local m = GetMoney()
         if Capture.lastMoney and m > Capture.lastMoney and Capture.lootOpenAt and GetTime() - Capture.lootOpenAt < 5 then
-            Capture:AddValue(m - Capture.lastMoney, nil, 0)
-            session.money = session.money + (m - Capture.lastMoney)
-            ns.db.stats.gold = (ns.db.stats.gold or 0) + (m - Capture.lastMoney)
+            local gain = m - Capture.lastMoney
+            Capture:AddValue(gain, nil, 0)
+            session.money = session.money + gain
+            ns.db.stats.gold = (ns.db.stats.gold or 0) + gain
+            -- coin per mob: shared between the corpses of this loot window
+            if #corpsesThisLoot > 0 then
+                local each = gain / #corpsesThisLoot
+                for _, npc in ipairs(corpsesThisLoot) do
+                    local rec = ns.db.mobs[npc]
+                    if rec then rec.c = (rec.c or 0) + each end
+                end
+                wipe(corpsesThisLoot)
+            end
         end
         Capture.lastMoney = m
     end)
@@ -210,6 +221,7 @@ local function isGear(itemID)
     local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
     return classID == 2 or classID == 4
 end
+Capture.IsGear = isGear
 
 function Capture:AddValue(copper, itemID, qty)
     if not session.start then session.start, session.tick = time(), GetTime() end
@@ -391,6 +403,7 @@ function Capture:OnLoot()
 
     -- creature loot (possibly several corpses with area loot)
     lootTimer = { kind = "mob", time = now }
+    wipe(corpsesThisLoot)
     local perCorpse = {}
     for slot = 1, n do
         local itemID, qty = slotItem(slot)
@@ -414,10 +427,14 @@ function Capture:OnLoot()
             local m = ns.db.mobs[c.npc] or {}
             ns.db.mobs[c.npc] = m
             m.k = (m.k or 0) + 1
+            m.n, m.cn = (m.n or 0) + 1, (m.cn or 0) + 1 -- corpses with quantities / coin recorded (2.1+)
             m.i = m.i or {}
+            m.iq = m.iq or {}
             m.q = m.q or {}
+            corpsesThisLoot[#corpsesThisLoot + 1] = c.npc
             local gotQ = {}
-            for id in pairs(c.items) do
+            for id, qty in pairs(c.items) do
+                m.iq[id] = (m.iq[id] or 0) + qty
                 m.i[id] = (m.i[id] or 0) + 1
                 if isGear(id) then
                     local q = DS:ItemQuality(id)

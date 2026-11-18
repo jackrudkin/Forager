@@ -82,8 +82,11 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
         end, sort = function(r) return r.cave == true and 2 or (r.cave == false and 1 or 0) end,
             tip = "Cave or mine name where this mob lives (explored map areas + caves you've walked through). ? = not known yet." },
         { key = "zone", label = "Zone", width = 96, get = function(r) return ns.Player:ZoneName(r.zone) end, sort = function(r) return ns.Player:ZoneName(r.zone) end },
-        { key = "val", label = "Gold/kill", width = 72, align = "RIGHT", get = function(r) return "|cffffd100" .. ns.Money(r.value, true) .. "|r" end,
-            sort = function(r) return r.value end, tip = "Expected value per kill: drops at auction/vendor price, coin, disenchant value of greens/blues, and skins if you have Skinning." },
+        { key = "val", label = "Gold/kill", width = 72, align = "RIGHT", get = function(r)
+            if r.m.noLoot and not r.m.lootSrc then return "|cff9d9d9dloot it|r" end
+            return "|cffffd100" .. ns.Money(r.value, true) .. "|r"
+        end,
+            sort = function(r) return r.value end, tip = "Expected value per kill: drops at auction/vendor price, coin, disenchant value of greens/blues, and skins if you have Skinning. Forever's new NPCs have no loot table yet (\"loot it\"): Forager learns it from the corpses you loot." },
         { key = "best", label = "Best drop", width = 140, get = function(r)
             local b = r.best
             if not b then return "-" end
@@ -185,7 +188,11 @@ Main:RegisterTab("mobs", "Mobs & Drops", "Interface\\Icons\\INV_Misc_Bag_10", fu
             d.dropHover[i].part = p
             d.dropHover[i]:Show()
         end
-        if i == 0 then d.drops[1]:SetText("|cff9d9d9dNo priced drops (try Auctionator/AuctionTrends price data).|r") end
+        if i == 0 then
+            d.drops[1]:SetText(r.m.noLoot and not r.m.lootSrc
+                and "|cff9d9d9dNew in Forever: no loot table in any open database yet. Loot a few and Forager fills this in.|r"
+                or "|cff9d9d9dNo priced drops (try Auctionator/AuctionTrends price data).|r")
+        end
     end
 
     -- search -------------------------------------------------------------------

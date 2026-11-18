@@ -733,7 +733,8 @@ test("risk: gank by ruleset/zone/settlements, death, hyperspawn, deaths learned,
     local elwynn = at(1429, { 0.40, 0.60, 0.48, 0.70 })
     local stvCamp = at(1434, { 0.29, 0.25, 0.35, 0.32 }) -- around Grom'gol
     local stvFar = at(1434, { 0.60, 0.60, 0.66, 0.66 })
-    assertTrue(elwynn.gank <= 5 and elwynn.label == "Low", "own low-level zone: low risk")
+    assertTrue(elwynn.gank <= 5 and elwynn.label == "Low", string.format("own low-level zone: low risk (gank %s death %s hyper %s %s: %s)",
+        tostring(elwynn.gank), tostring(elwynn.death), tostring(elwynn.hyper), tostring(elwynn.label), table.concat(elwynn.why.death or {}, "; ") .. " | " .. table.concat(elwynn.why.hyper or {}, "; ")))
     assertTrue(stvCamp.gank > stvFar.gank and stvCamp.gank >= 70, "enemy flight path nearby raises gank risk")
     assertTrue(#stvCamp.why.gank >= 2, "reasons given")
     ns.settings.ruleset = "normal"
@@ -1191,6 +1192,64 @@ test("self-test, settings pages and localisation tables", function()
         end
         assertTrue(n >= 60, loc .. " has " .. n .. " strings")
     end
+end)
+
+test("new zones: trace mobs, zone levels, no node data said plainly, your loot fills in values", function()
+    -- zones: published ranges, or the traced mob levels where sources disagree; the battleground is out
+    assertTrue(ns.Zones[2548] and ns.Zones[2548].min == 35 and ns.Zones[2652].min == 40 and ns.Zones[2482].min == 56, "levels")
+    assertTrue(ns.Zones[2524] == nil, "Darkspear Islands (battleground) not a farming zone")
+    assertTrue(ns.DS:HasZoneNodeData(1429) and not ns.DS:HasZoneNodeData(2548), "node data flag")
+    -- Riverglades mobs from QuestieDB traces: levels, spawns, no loot table
+    local spawns = ns.DS:GetZoneMobs(2548)
+    local croc = ns.DS:GetMob(259046)
+    assertTrue(spawns[259046] and #spawns[259046] >= 20, "crocolisk spawns")
+    assertTrue(croc and croc.minLevel == 38 and croc.noLoot and not croc.lootSrc, "new NPC without loot data")
+    local hostile = 0
+    for npc in pairs(spawns) do local m = ns.DS:GetMob(npc) if m and not ns.DS:IsFriendly(m) then hostile = hostile + 1 end end
+    assertTrue(hostile >= 50, "hostile mob types in Riverglades: " .. hostile)
+    -- risk works there
+    local lvl = M.level
+    M.level = 40
+    local r = { uiMap = 2548, rect = { 0.40, 0.40, 0.50, 0.50 } }
+    ns.Risk:Assess(r)
+    assertTrue(r.danger and r.danger.label, "risk in a new zone")
+    M.level = lvl
+    -- loot two crocolisk corpses: items with quantities and coin are learned, the mob gets a value
+    ns.db.mobs[259046] = nil
+    for i = 1, 2 do
+        M.loot = { { link = "|Hitem:5471::|h[Stringy Wolf Meat]|h", qty = 2, sources = { "Creature-0-1-0-1-259046-0A" .. i, 1 } } }
+        M.Fire("LOOT_READY")
+        M.money = (M.money or 0) + 150
+        M.Fire("PLAYER_MONEY")
+        M.Fire("LOOT_CLOSED")
+    end
+    ns.DS:InvalidateMobs()
+    croc = ns.DS:GetMob(259046)
+    local own = ns.db.mobs[259046]
+    assertTrue(own.n == 2 and own.iq[5471] == 4 and math.abs(own.c - 300) < 1e-9, "quantities and coin recorded")
+    local meat
+    for _, e in ipairs(croc.farm) do if e[1] == 5471 then meat = e[2] end end
+    assertTrue(meat == 2 and croc.copper == 150 and croc.lootSrc, "your loot as it is (no table to blend with)")
+    assertTrue(ns.Finder:MobValue(croc, "gold", {}, 40) > 0, "valued")
+    local camp = ns.Finder:MobResult(259046, 2548)
+    assertTrue(camp and camp.perHour > 0 and camp.route, "farm this mob in Riverglades")
+    -- Classic mobs: your drops (quantities) are blended with the bundled table, gear items left to the grades
+    local base = ns.DS:GetMob(426)
+    local baseCloth
+    for _, e in ipairs(base.farm) do if e[1] == 2589 then baseCloth = e[2] end end
+    ns.db.mobs[426] = { k = 30, n = 30, i = { [2589] = 30 }, iq = { [2589] = 60 }, q = {}, c = 0, cn = 0 }
+    ns.DS:InvalidateMobs()
+    local cloth
+    for _, e in ipairs(ns.DS:GetMob(426).farm) do if e[1] == 2589 then cloth = e[2] end end
+    assertTrue(math.abs(cloth - (0.5 * 2 + 0.5 * baseCloth)) < 1e-9, "blended linen " .. cloth)
+    ns.db.mobs[426], ns.db.mobs[259046] = nil, nil
+    ns.DS:InvalidateMobs()
+    -- the UI says why a new zone has no nodes
+    local items = ns.Main.ZoneItems(false, false)
+    local tagged = false
+    for _, it in ipairs(items) do if it.value == 2548 and it.text:find("new") then tagged = true end end
+    assertTrue(tagged, "zone list marks new zones")
+    assertTrue(string.format(ns.DS.NO_NODE_DATA, "Riverglades"):find("fills in"), "explanation")
 end)
 
 test("memory: searches stay within budget, caches are capped", function()

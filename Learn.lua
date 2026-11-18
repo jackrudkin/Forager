@@ -332,6 +332,37 @@ function Learn:SkinList(m)
     return out, Learn:SourceLabel(n), n >= minN()
 end
 
+--- Blend your creature loot into a decoded mob: drops (quantities from 2.1, else per corpse), coin and
+--- gear grades. Mobs without a bundled loot table (Forever's new NPCs) use your loot as it is.
+function Learn:MobLoot(m)
+    local own = ns.db and ns.db.mobs and ns.db.mobs[m.id]
+    if not own or (own.k or 0) <= 0 then return m end
+    local raw, n = own.i, own.k
+    if (own.n or 0) > 0 then raw, n = own.iq or {}, own.n end
+    -- weapons and armour are counted through the gear grades (disenchant value), not one by one
+    local counts = {}
+    local isGear = ns.Capture and ns.Capture.IsGear
+    for id, c in pairs(raw or {}) do if not (isGear and isGear(id)) then counts[id] = c end end
+    local base = m.noLoot and nil or m.farmBase
+    m.farm = (Learn:BlendList(base, counts, n))
+    if (own.cn or 0) > 0 then
+        local coin = (own.c or 0) / own.cn
+        m.copper = m.noLoot and coin or Learn.Blend(own.cn, coin, m.copper or 0)
+    end
+    local q, k = own.q or {}, own.k
+    if m.green and not m.noLoot then
+        m.green = Learn.Blend(k, (q[2] or 0) / k, m.green)
+        m.blue = Learn.Blend(k, (q[3] or 0) / k, m.blue)
+        m.epic = Learn.Blend(k, (q[4] or 0) / k, m.epic)
+    elseif q[2] or q[3] or q[4] then
+        m.green, m.blue, m.epic = (q[2] or 0) / k, (q[3] or 0) / k, (q[4] or 0) / k
+        m.greenIlvl = m.greenIlvl or m.maxLevel
+    end
+    if not m.skinnable and (own.s or 0) > 0 then m.skinnable = true end
+    m.lootSrc = Learn:SourceLabel(n, m.noLoot and "no data yet" or "estimate")
+    return m
+end
+
 -------------------------------------------------------------------------------
 -- fights, kills per hour
 -------------------------------------------------------------------------------

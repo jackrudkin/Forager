@@ -5,6 +5,7 @@
 3. `lua5.1 dumpq.lua QuestieDB/data/Forever/foreverNpcDB.lua npcData npc.json`
 4. `cp QuestieDB/support/Forever/Zones/areaIdToUiMapId.lua areamap.lua`
 5. `zcat classic-db/Full_DB/ClassicDB_*.sql.gz > classic.sql`
+5b. `lua5.1 dumptraces.lua <QuestieDB>/src/corrections/Forever/traces tr` (Forever's new NPCs, from Questie's player traces)
 6. `python3 build_data.py` (writes ../build/Forager/Data/*.lua and ../build/Forager_Data/*.lua; set FORAGER_OUT_CORE /
    FORAGER_OUT_DATA to write straight into the repo's Data/ and Forager_Data/)
 

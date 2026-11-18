@@ -36,6 +36,7 @@ jobs:
           lua5.1 dumpq.lua "$RUNNER_TEMP/QuestieDB/data/Forever/foreverObjectDB.lua" objectData obj.json
           lua5.1 dumpq.lua "$RUNNER_TEMP/QuestieDB/data/Forever/foreverNpcDB.lua" npcData npc.json
           cp "$RUNNER_TEMP/QuestieDB/support/Forever/Zones/areaIdToUiMapId.lua" areamap.lua
+          lua5.1 dumptraces.lua "$RUNNER_TEMP/QuestieDB/src/corrections/Forever/traces" tr
           zcat "$RUNNER_TEMP"/classic-db/Full_DB/ClassicDB_*.sql.gz > classic.sql
 
       - name: Build
@@ -45,7 +46,7 @@ jobs:
           FORAGER_OUT_DATA: ${{ github.workspace }}/Forager_Data
         run: |
           python3 build_data.py
-          rm -f obj.json npc.json areamap.lua classic.sql
+          rm -f obj.json npc.json tr_npc.json tr_obj.json areamap.lua classic.sql
 
       - name: Changed?
         id: diff

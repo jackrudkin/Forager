@@ -64,15 +64,19 @@ function Tooltip:Lines(npcID, level, opts)
 
     -- farmables (cloth, meat, elemental, trade goods, lockboxes)
     if s.tooltipFarm then
-        local ownFarm
-        if own and own.i then
-            ownFarm = {}
-            for id, n in pairs(own.i) do
-                local cat = DS:ItemCategory(id)
-                if cat ~= "other" then ownFarm[id] = n end
+        -- m.farm is already blended with your loot (Learn:MobLoot); show the farmable part
+        local list, lab
+        if m then
+            list = {}
+            for _, e in ipairs(m.farm or {}) do
+                if DS:ItemCategory(e[1]) ~= "other" or m.noLoot then list[#list + 1] = e end
             end
+            lab = label(own and (own.n and own.n > 0 and own.n or own.k) or 0, minN)
+        elseif own and own.i then
+            local ownFarm = {}
+            for id, n in pairs(own.i) do if DS:ItemCategory(id) ~= "other" then ownFarm[id] = n end end
+            list, lab = rates(nil, ownFarm, own.k, minN)
         end
-        local list, lab = rates(m and m.farm, ownFarm, own and own.k, minN)
         if list and #list > 0 then
             add("|cffffd100Drops|r", lab)
             add("  " .. joinList(list, 4))
@@ -84,9 +88,8 @@ function Tooltip:Lines(npcID, level, opts)
         local g, b, e
         local k = own and own.k or 0
         local q = own and own.q or {}
-        local B = ns.Learn.Blend
         if m and m.green then
-            g, b, e = B(k, (q[2] or 0) / math.max(1, k), m.green), B(k, (q[3] or 0) / math.max(1, k), m.blue), B(k, (q[4] or 0) / math.max(1, k), m.epic)
+            g, b, e = m.green, m.blue or 0, m.epic or 0 -- already blended with your kills
         elseif k > 0 then
             g, b, e = (q[2] or 0) / k, (q[3] or 0) / k, (q[4] or 0) / k
         end

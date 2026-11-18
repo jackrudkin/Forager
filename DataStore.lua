@@ -149,6 +149,14 @@ function DS:GetZoneNodes(uiMap)
     return list
 end
 
+--- Does the bundled data have herb/ore spawn points for this zone? (Forever's new zones don't yet.)
+function DS:HasZoneNodeData(uiMap)
+    local str = ForagerData and ForagerData.nodes and ForagerData.nodes[uiMap]
+    return str ~= nil and str ~= ""
+end
+
+DS.NO_NODE_DATA = "No open data source has herb or ore spawn points for %s yet (QuestieDB's player traces don't record nodes and CMaNGOS is Classic-only). Forager adds every node you gather there, so this zone fills in as you, your guild (Settings: sharing) or a GatherMate2/GatherLite import find them."
+
 function DS:CountBundledNodes()
     local n = 0
     if ForagerData and ForagerData.nodes then
@@ -237,9 +245,13 @@ function DS:GetMob(npcID)
         m.green, m.blue, m.epic = (tonumber(g) or 0) / 100, (tonumber(b) or 0) / 100, (tonumber(e) or 0) / 100
         m.greenIlvl = tonumber(il) or m.maxLevel
     end
-    -- skin = what the finders use: your own skins from minSamples, else Classic + Forever Scarce
-    m.skinBase = m.skin
-    if ns.Learn and ns.db then m.skin, m.skinSrc = ns.Learn:SkinList(m) end
+    m.noLoot = f[7] == "" and f[10] == "0" and not m.skinnable -- no loot table (Forever's new NPCs)
+    -- what the finders use: your loot blended with the bundled tables (Learn:MobLoot), skins likewise
+    m.skinBase, m.farmBase = m.skin, m.farm
+    if ns.Learn and ns.db then
+        ns.Learn:MobLoot(m)
+        m.skin, m.skinSrc = ns.Learn:SkinList(m)
+    end
     mobCache[npcID] = m
     return m
 end

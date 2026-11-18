@@ -47,6 +47,11 @@ Main:RegisterTab("nodes", "Nodes", "Interface\\Icons\\INV_Ore_Copper_01", functi
     end)
     tbl:SetPoint("TOPLEFT", 0, -30)
     tbl.sortKey = "skill"
+    -- zones with no spawn data (Forever's new zones): say why the table is empty or short
+    local note = UI.Muted(panel, "")
+    note:SetPoint("TOPLEFT", tbl, "TOPLEFT", 8, -60)
+    note:SetWidth(560)
+    note:SetJustifyH("LEFT")
     tbl.sortDesc = false
 
     local by = -30 - 21 * 18
@@ -84,5 +89,7 @@ Main:RegisterTab("nodes", "Nodes", "Interface\\Icons\\INV_Ore_Copper_01", functi
         for _, e in pairs(byType) do rows[#rows + 1] = e end
         tbl:SetData(rows, true)
         summary:SetText(string.format("%d points · %d types · database %s", total, #rows, ns.DS:HasBundled() and "loaded" or "|cffff4040not loaded|r"))
+        local noData = ns.DS:HasBundled() and not ns.DS:HasZoneNodeData(zone)
+        note:SetText(noData and string.format(ns.DS.NO_NODE_DATA, ns.DS:ZoneName(zone)) or "")
     end
 end)

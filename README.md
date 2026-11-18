@@ -4,6 +4,22 @@ Tells you where to farm any gathering profession, material or single item (inclu
 
 Built for **WoW Forever 1.60.1** (`## Interface: 16001`, Mainline 12.x API). Forever only.
 
+## What's new in 2.1: Forever's new zones
+
+| Zone | Mobs now in Forager | Herb / ore nodes |
+|---|---|---|
+| Riverglades (35-45) | 151 hostile mob types, ~5,600 spawn points | None bundled: no open data source has them yet |
+| Mount Hyjal (56-60) | 83 types, ~3,700 points | None bundled |
+| Zephras Isle (1-12) | 66 types, ~2,700 points | None bundled |
+| Shen'dralas (40-45) | 34 types, ~2,900 points | None bundled |
+
+- **Where the mobs come from:** QuestieDB's Forever trace layer, which is aggregated from Questie users' own game clients. It gives names, levels, elite rank, faction and spawn points. Pets, summons, bots and camp tents are filtered out. In the Classic zones only Forever's new faction NPCs are added (towns and camps, for gank risk); Classic mobs are untouched.
+- **What works in those zones:** Mobs & Drops, **Farm this mob**, risk levels and Realistic spots (levels, elites, density, towns), and the Gather + Kill fighting side.
+- **Loot:** these are new NPCs, and no open database has their loot tables. They show **loot it** until you do: Forager now records loot quantities and coin per mob, and uses them in every estimate. For Classic mobs your loot is blended with the bundled tables; for new NPCs it's used as it is.
+- **Herb and ore nodes:** no open data source has spawn points for the new zones: QuestieDB's traces don't record gathering nodes and CMaNGOS is Classic-only (Wowhead's maps can't be copied: its terms forbid scraping). Forager adds every node you gather, so these zones fill in as you, your guild (sharing) or a GatherMate2/GatherLite import find them. Zone lists mark them **new**, and the Nodes and Farm tabs say why they're empty.
+- **Zone levels:** Mount Hyjal is 56-60 and Shen'dralas 40-45, from the levels of their mobs in the traces (published sources disagree on Shen'dralas). Darkspear Islands is a battleground, so it's no longer listed as a farming zone.
+- Your mob drops are now also counted with quantities (e.g. 2 cloth from one corpse), and weapons/armour stay in the gear-grade chances so they aren't counted twice.
+
 ## What's new in 2.0: real spawn data, numbers that learn, farming helpers
 
 **More accurate estimates**
@@ -155,7 +171,7 @@ Settings from earlier versions are upgraded automatically, and the old pin setti
 | **Guild/party sharing** (off by default) | Node finds from other Forager users | "Shared" |
 | **GatherMate2 / GatherLite import** | Their saved nodes (while those addons are enabled) | "Imported" |
 
-**What's missing from the bundled data:** nodes in Forever's new zones (Mount Hyjal, Riverglades, Shen'dralas, Zephras Isle, Darkspear Islands) and new node types (Marefoil, Demonsage, Death Lotus, Heavy Thorium, Poor Copper, Wilted Peacebloom, Stunted Silverleaf). These fill in as you gather. A node type Forager doesn't know is learned from the item it gives and named after that item.
+**What's missing from the bundled data:** herb and ore nodes in Forever's new zones (Mount Hyjal, Riverglades, Shen'dralas, Zephras Isle), loot tables for Forever's new NPCs, and new node types (Marefoil, Demonsage, Death Lotus, Heavy Thorium, Poor Copper, Wilted Peacebloom, Stunted Silverleaf). No open source has them yet. They fill in as you gather and loot. A node type Forager doesn't know is learned from the item it gives and named after that item. Mobs in the new zones are included (from QuestieDB's player traces, see [What's new in 2.1](#whats-new-in-21-forevers-new-zones)).
 
 **Why GatherLite's database isn't bundled:** its Forever coordinates were scraped from Wowhead, and Wowhead's terms forbid scraping. GatherMate2_Data has the same problem. Importing your own saved nodes from either addon is fine.
 
@@ -363,7 +379,8 @@ What each number comes from, and how sure it is.
 
 | Data | Source | Forever-specific? |
 |---|---|---|
-| Node, mob and NPC spawn points, mob levels, NPC factions | QuestieDB Forever database. Its node and NPC tables were last updated on 11 Oct 2026; Questie's Forever coordinates are converted from Classic Era sources | Partly: Forever's new zones and nodes have few or no spawn points yet. Your gathers, your guild (sharing) and imports fill the gaps |
+| Node, mob and NPC spawn points, mob levels, NPC factions | QuestieDB Forever database (Classic spawns converted to Forever coordinates) | Partly. Forever's new zones have no node spawn points yet: your gathers, your guild (sharing) and imports fill the gaps |
+| Mobs and NPCs new in Forever (incl. the new zones) | QuestieDB's Forever trace layer: names, levels, rank, faction and spawns aggregated from Questie users' clients | Yes. No loot tables: learned from your loot |
 | Node yields, gathers per vein, mob loot and skins | CMaNGOS classic-db (Classic) | No, so your own data is blended in (half at n = 30 by default) |
 | Live share per spawn point, node and mob respawn times | CMaNGOS classic-db spawn pools (`pool_template`, `pool_gameobject`, `pool_pool`) and `spawntimesecsmin/max` | Classic. Forever's spawn hotfixes are listed as notes; your calibration corrects the rest |
 | Herb seeds (IDs, which herbs give which tier) | QuestieDB Forever item traces; vendor prices from Forever item database pages (fallback only: the game's sell price is used once the item is cached) | Yes. Rates are learned |
@@ -395,7 +412,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 
 ## Development
 
-- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 53 tests. They cover:
+- `tests/run_tests.lua`: a mock-API harness (Lua 5.1) with 54 tests. They cover:
   - TOC packaging metadata, login, decoding, finder (all goal types, item goals, both modes, questing, caves/outdoors), routes, farm-this-mob;
   - tooltips, capture (herb, unknown Forever node, creature loot, skinning, secret values), sharing, imports, backup/restore/safe mode;
   - UI tabs (fails on any UI build error), slash commands, maps (no pins created, route drawing in every minimap mode), settings migrations;
@@ -417,7 +434,7 @@ Not changed, because no better data was found: node spawn positions (Forever red
 ## Known limitations
 
 - Spawns and loot rates are Classic-era (see [Data sources & accuracy](#data-sources--accuracy)). Forever changed some itemization (world epics, rare spawns), so gear-grade rates for rares may be off. Your own data is blended in and counts most from n = 30.
-- New Forever zones and node types are learned only as you, your guild or imports find them.
+- Herb/ore nodes in Forever's new zones, new node types and the loot of Forever's new NPCs are learned only as you, your guild or imports find them.
 - Gold/hour is an estimate. It assumes you're the only farmer, Classic spawn-pool sizes, and straight-line travel without terrain. Calibration from your own sessions corrects it per spot.
 - Translations cover the tabs, Settings, HUD and gold breakdown; the rest of the window is English. Non-English map previews and translations haven't been checked in a live client.
 - Lockpicking skill can't be read from the API, so it's assumed to be at the level cap.

@@ -3,6 +3,7 @@
 
 Inputs (paths relative to this script):
   obj.json, npc.json      -- QuestieDB Forever objectData/npcData dumped by dumpq.lua
+  tr_npc.json (optional)  -- QuestieDB Forever trace NPCs dumped by dumptraces.lua (new Forever NPCs)
   classic.sql             -- CMaNGOS classic-db full dump (1.12.1 z2815)
   areamap.lua             -- QuestieDB support/Forever/Zones/areaIdToUiMapId.lua
 Outputs:
@@ -51,9 +52,12 @@ ZONES = {
     1448: ("Felwood", 48, 55, "C", "K"), 1449: ("Un'Goro Crater", 48, 55, "C", "K"),
     1450: ("Moonglade", 55, 60, "S", "K"), 1451: ("Silithus", 55, 60, "C", "K"),
     1452: ("Winterspring", 53, 60, "C", "K"),
-    2482: ("Mount Hyjal", 60, 60, "C", "K"), 2521: ("Zephras Isle", 1, 12, "C", "I"),
-    2524: ("Darkspear Islands", 60, 60, "C", "K"), 2548: ("Riverglades", 35, 45, "C", "E"),
-    2652: ("Shen'dralas", 45, 53, "C", "K"),
+    # New Forever zones. Riverglades and Zephras Isle: published ranges. Mount Hyjal (published "level 60")
+    # and Shen'dralas (published 40-45 or 45-53): the levels of their mobs in QuestieDB's traces
+    # (56-59 and 40-43 for 80% of spawns). Darkspear Islands is a battleground: left out.
+    2482: ("Mount Hyjal", 56, 60, "C", "K"), 2521: ("Zephras Isle", 1, 12, "C", "I"),
+    2548: ("Riverglades", 35, 45, "C", "E"),
+    2652: ("Shen'dralas", 40, 45, "C", "K"),
 }
 
 # ---------------------------------------------------------------- node types
@@ -210,6 +214,56 @@ def category(it):
 # ---------------------------------------------------------------- QuestieDB
 obj = json.load(open(os.path.join(HERE, 'obj.json')))
 npc = json.load(open(os.path.join(HERE, 'npc.json')))
+# Forever's new NPCs (new zones and new NPCs in old zones) aren't in the converted Classic data; QuestieDB's
+# trace layer has them (names, levels, rank, faction, spawns) from Questie users' clients. Only NPCs the
+# converted data lacks, or has without spawns, are taken; nothing Classic is replaced.
+# Traces also catch player pets, summons, camp tents and bots: names missing/"Unknown", summons, and
+# anything seen in more than 3 zones are left out. In the Classic zones only NPCs friendly to one faction
+# are taken (Forever's new quest hubs, for gank risk); hostile ones only in the new zones.
+NEW_ZONES = {2482, 2521, 2548, 2652}
+TRACE_NPCS = 0
+_tr = os.path.join(HERE, 'tr_npc.json')
+if os.path.exists(_tr):
+    _amap = {}
+    for _line in open(os.path.join(HERE, 'areamap.lua')):
+        _m = re.match(r'\s*\[(\d+)\]\s*=\s*(\d+),', _line)
+        if _m:
+            _amap[int(_m.group(1))] = int(_m.group(2))
+    for sid, r in json.load(open(_tr)).items():
+        sp = r.get('spawns')
+        if not sp:
+            continue
+        if isinstance(sp, list):
+            sp = {str(i + 1): v for i, v in enumerate(sp)}
+        cur = npc.get(sid)
+        if cur and cur.get('7'):
+            continue
+        name = r.get('name') or (cur or {}).get('1')
+        if not name or name == 'Unknown' or name.startswith('Summoned ') or name.startswith('Image of '):
+            continue
+        zones = {_amap.get(int(a), int(a)) for a in sp}
+        if len(zones) > 3:
+            continue
+        fr = r.get('friendlyToFaction')
+        if not fr and (r.get('questStarts_add') or r.get('questEnds_add')):
+            fr = 'AH'  # quest givers aren't hostile: friendly to both when the trace has no faction
+        if fr == 'AH':
+            continue
+        if fr not in ('A', 'H'):
+            sp = {a: v for a, v in sp.items() if _amap.get(int(a), int(a)) in NEW_ZONES}
+            if not sp or not r.get('minLevel'):
+                continue
+        rec = dict(cur or {})
+        rec['1'] = rec.get('1') or r.get('name')
+        rec['4'] = rec.get('4') or r.get('minLevel')
+        rec['5'] = rec.get('5') or r.get('maxLevel')
+        rec['6'] = rec.get('6') or r.get('rank') or 0
+        rec['7'] = sp
+        if r.get('friendlyToFaction') and not rec.get('13'):
+            rec['13'] = r.get('friendlyToFaction')
+        npc[sid] = rec
+        TRACE_NPCS += 1
+print('trace NPCs added:', TRACE_NPCS)
 
 B36 = '0123456789abcdefghijklmnopqrstuvwxyz'
 def b36(n, width=3):

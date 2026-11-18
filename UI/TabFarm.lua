@@ -432,6 +432,14 @@ Main:RegisterTab("farm", "Farm", "Interface\\Icons\\INV_Misc_Herb_07", function(
             lines[#lines + 1] = "Or switch Location to Anywhere."
         elseif ns.Quests:IsActive() then
             lines[#lines + 1] = "Set Search in to Everywhere to look outside your questing zone."
+            if goal.prof then
+                for _, z in ipairs(ns.Quests:Zones() or {}) do
+                    if not ns.DS:HasZoneNodeData(z) then
+                        lines[#lines + 1] = ""
+                        lines[#lines + 1] = string.format(ns.DS.NO_NODE_DATA, ns.DS:ZoneName(z))
+                    end
+                end
+            end
         elseif goal.kind == "item" then
             local sc = goal.item and ns.Scarce[goal.item]
             if sc then
