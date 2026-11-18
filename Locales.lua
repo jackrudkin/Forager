@@ -93,6 +93,26 @@ T.deDE = {
         "Kampf + Plündern für einen Mob deiner Stufe, bis Forager deine Kämpfe gemessen hat (dann eingemischt). Niedrigere Mobs zählen als schneller.",
     ["Time before a mob you killed is back, for mobs without spawn data (or with spawn data off). A loop shorter than this meets fewer mobs."] =
         "Zeit, bis ein getöteter Mob wieder da ist, für Mobs ohne Spawndaten (oder mit Spawndaten aus). Eine kürzere Runde trifft weniger Mobs.",
+    -- free roam
+    ["Free roam"] = "Freies Sammeln", ["Best spot"] = "Bester Ort", ["Herbalism"] = "Kräuterkunde", ["Mining"] = "Bergbau",
+    ["herbs + ore"] = "Kräuter + Erz", ["Free roam: Herbalism"] = "Freies Sammeln: Kräuterkunde",
+    ["Free roam: Mining"] = "Freies Sammeln: Bergbau", ["Free roam: herbs + ore"] = "Freies Sammeln: Kräuter + Erz",
+    ["%d gathered · %d checked"] = "%d gesammelt · %d geprüft", ["%d seen on the minimap"] = "%d auf der Minikarte gesehen",
+    ["(on your minimap)"] = "(auf deiner Minikarte)", ["Likely spot"] = "Wahrscheinlicher Fundort", ["no spot nearby"] = "kein Fundort in der Nähe",
+    ["No unchecked spots nearby: explore, or hover a dot on your minimap."] =
+        "Keine ungeprüften Fundorte in der Nähe: erkunde oder fahre über einen Punkt auf deiner Minikarte.",
+    ["Free roam has no stops: follow the arrow."] = "Freies Sammeln hat keine Stopps: folge dem Pfeil.",
+    ["Free roam works outdoors: step outside first."] = "Freies Sammeln funktioniert nur im Freien: geh zuerst nach draußen.",
+    ["Free roam: %s. The arrow points to the nearest likely node; hover a dot on your minimap to lock on to it."] =
+        "Freies Sammeln: %s. Der Pfeil zeigt zum nächsten wahrscheinlichen Vorkommen; fahre über einen Punkt auf deiner Minikarte, um ihn anzuvisieren.",
+    ["Start farming the best spot for your Farm goal, with a route."] = "Farme den besten Ort für dein Farmziel, mit Route.",
+    ["Start the best spot for your goal, or roam freely and get pointed to nodes."] =
+        "Starte den besten Ort für dein Ziel oder sammle frei und lass dich zu Vorkommen führen.",
+    ["Gather anywhere without a route: the arrow points to the nearest likely herb or ore node and locks on to dots you hover on the minimap. Every node you gather or point at is saved. Herbs or ore follow your Farm goal; /forage roam herb|ore|both picks one."] =
+        "Sammle überall ohne Route: Der Pfeil zeigt zum nächsten wahrscheinlichen Kräuter- oder Erzvorkommen und visiert Punkte an, über die du auf der Minikarte fährst. Jedes Vorkommen, das du sammelst oder anzeigst, wird gespeichert. Kräuter oder Erz folgen deinem Farmziel; /forage roam herb|ore|both wählt eins.",
+    ["Save nodes I point at"] = "Vorkommen speichern, auf die ich zeige",
+    ["Hover a herb or ore dot on the minimap, or face a node in the world: Forager saves it as a spawn point (no yields) so free roam and the rankings know it exists. Free roam locks on to hovered dots either way."] =
+        "Fahre auf der Minikarte über einen Kräuter- oder Erzpunkt oder schau ein Vorkommen in der Welt an: Forager speichert es als Fundort (ohne Erträge), damit freies Sammeln und die Ranglisten es kennen. Freies Sammeln visiert überfahrene Punkte so oder so an.",
     -- gold breakdown
     ["Estimate (full prices)"] = "Schätzung (volle Preise)", ["AH cut 5%"] = "AH-Gebühr 5%", ["Repairs (measured)"] = "Reparaturen (gemessen)",
     ["You keep"] = "Dir bleibt",
@@ -183,6 +203,26 @@ T.frFR = {
         "Combat + ramassage pour un monstre de votre niveau, jusqu'à ce que Forager mesure vos combats (puis mélangé). Les monstres plus faibles comptent comme plus rapides.",
     ["Time before a mob you killed is back, for mobs without spawn data (or with spawn data off). A loop shorter than this meets fewer mobs."] =
         "Délai avant le retour d'un monstre tué, pour les monstres sans données d'apparition (ou données désactivées). Une boucle plus courte croise moins de monstres.",
+    -- free roam
+    ["Free roam"] = "Récolte libre", ["Best spot"] = "Meilleur lieu", ["Herbalism"] = "Herboristerie", ["Mining"] = "Minage",
+    ["herbs + ore"] = "herbes + minerai", ["Free roam: Herbalism"] = "Récolte libre : Herboristerie",
+    ["Free roam: Mining"] = "Récolte libre : Minage", ["Free roam: herbs + ore"] = "Récolte libre : herbes + minerai",
+    ["%d gathered · %d checked"] = "%d récoltés · %d vérifiés", ["%d seen on the minimap"] = "%d vus sur la minicarte",
+    ["(on your minimap)"] = "(sur votre minicarte)", ["Likely spot"] = "Point probable", ["no spot nearby"] = "aucun point à proximité",
+    ["No unchecked spots nearby: explore, or hover a dot on your minimap."] =
+        "Aucun point non vérifié à proximité : explorez, ou survolez un point sur votre minicarte.",
+    ["Free roam has no stops: follow the arrow."] = "La récolte libre n'a pas d'arrêts : suivez la flèche.",
+    ["Free roam works outdoors: step outside first."] = "La récolte libre fonctionne en extérieur : sortez d'abord.",
+    ["Free roam: %s. The arrow points to the nearest likely node; hover a dot on your minimap to lock on to it."] =
+        "Récolte libre : %s. La flèche pointe vers le gisement probable le plus proche ; survolez un point sur votre minicarte pour le cibler.",
+    ["Start farming the best spot for your Farm goal, with a route."] = "Farmer le meilleur lieu pour votre objectif, avec un itinéraire.",
+    ["Start the best spot for your goal, or roam freely and get pointed to nodes."] =
+        "Lancez le meilleur lieu pour votre objectif, ou récoltez librement en étant guidé vers les gisements.",
+    ["Gather anywhere without a route: the arrow points to the nearest likely herb or ore node and locks on to dots you hover on the minimap. Every node you gather or point at is saved. Herbs or ore follow your Farm goal; /forage roam herb|ore|both picks one."] =
+        "Récoltez n'importe où sans itinéraire : la flèche pointe vers le gisement d'herbe ou de minerai probable le plus proche et cible les points survolés sur la minicarte. Chaque gisement récolté ou pointé est enregistré. Herbes ou minerai suivent votre objectif ; /forage roam herb|ore|both en choisit un.",
+    ["Save nodes I point at"] = "Enregistrer les gisements pointés",
+    ["Hover a herb or ore dot on the minimap, or face a node in the world: Forager saves it as a spawn point (no yields) so free roam and the rankings know it exists. Free roam locks on to hovered dots either way."] =
+        "Survolez un point d'herbe ou de minerai sur la minicarte, ou faites face à un gisement : Forager l'enregistre comme point d'apparition (sans rendement) pour que la récolte libre et les classements le connaissent. La récolte libre cible les points survolés dans tous les cas.",
     -- gold breakdown
     ["Estimate (full prices)"] = "Estimation (prix pleins)", ["AH cut 5%"] = "Taxe HV 5%", ["Repairs (measured)"] = "Réparations (mesurées)",
     ["You keep"] = "Il vous reste",

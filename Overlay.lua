@@ -493,10 +493,52 @@ local function hudIssues()
     end
 end
 
+--- Point the HUD arrow at a map position; returns yards, or nil (arrow dimmed) when it can't.
+local function pointArrow(uiMap, x, y)
+    local px, py, inst = HBD:GetPlayerWorldPosition()
+    local facing = ns.Safe(GetPlayerFacing())
+    local wx, wy = HBD:GetWorldCoordinatesFromZone(x, y, uiMap)
+    local angle, yards
+    if px and wx and facing then angle, yards = HBD:GetWorldVector(inst, px, py, wx, wy) end
+    if not angle then
+        hud.arrow:SetAlpha(0.25)
+        hud.dist:SetText("")
+        return nil
+    end
+    hud.arrow:SetAlpha(1)
+    hud.arrow:SetRotation(angle - facing)
+    hud.dist:SetText(string.format("%d yd", yards or 0))
+    return yards
+end
+
+--- Free roam: arrow to the next likely node (or the minimap dot you hovered).
+local function updateRoamHUD(a)
+    hud.title:SetText(string.format("%s · %s", L[ns.Roam.GOALS[a.result.goal].label], P:ZoneName(a.uiMap)))
+    hud:Show()
+    hudIssues()
+    local tg = ns.Roam:Target()
+    local counts = string.format(L["%d gathered · %d checked"], a.gathered, a.nChecked)
+    if not tg then
+        hud.arrow:SetAlpha(0.25)
+        hud.dist:SetText("")
+        hud.info:SetText(L["No unchecked spots nearby: explore, or hover a dot on your minimap."] .. "  ·  " .. counts)
+        return
+    end
+    pointArrow(a.uiMap, tg.x, tg.y)
+    local t = ns.DS:GetType(tg.t)
+    local what = t and t.name or "?"
+    if tg.locked then
+        hud.info:SetText("|cff7fd36b" .. what .. "|r " .. L["(on your minimap)"] .. "  ·  " .. counts)
+    else
+        hud.info:SetText(L["Likely spot"] .. ": " .. what .. "  ·  " .. counts)
+    end
+end
+
 local function updateHUD()
     local a = Route.active
     if not hud then return end
     if not a or not ns.settings.hud or (ns.settings.hideInCombat and InCombatLockdown()) then hud:Hide() return end
+    if a.roam then return updateRoamHUD(a) end
     local r = a.result
     local goal = ns.Finder:GoalInfo(r.goal)
     hud.title:SetText(string.format("%s · %s%s", goal.label, r.areaName and (r.areaName .. ", ") or "", r.zoneName or P:ZoneName(a.uiMap)))
@@ -542,7 +584,7 @@ function Overlay:Init()
         Overlay.DrawWorldMap()
         Overlay.DrawMinimap()
         Overlay.UpdateArrow()
-        if Route.active then
+        if Route.active and not Route.active.roam then
             if Overlay.pinFor ~= Route.active.result then Overlay:SetFarmPin(Route.active.result) Overlay.pinFor = Route.active.result end
         elseif Overlay.pinFor then
             Overlay:ClearFarmPin()
@@ -556,7 +598,7 @@ function Overlay:Init()
     ns:On("PLAYER_REGEN_ENABLED", function() Overlay.UpdateArrow() end)
     ns.Ticker(0.1, function()
         if Route.active then
-            local ok, err = pcall(Route.Update, Route)
+            local ok, err = pcall(Route.active.roam and ns.Roam.Update or Route.Update, Route.active.roam and ns.Roam or Route)
             if not ok then Overlay.lastError = "route: " .. tostring(err) end
             Overlay.DrawMinimap()
             Overlay.UpdateArrow()

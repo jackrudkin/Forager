@@ -282,6 +282,29 @@ function Capture:RecordNode(uiMap, x, y, typeKey, items, source)
     return best or ns.EncodeXY(x, y), rec, newVisit
 end
 
+--- A node you saw but didn't gather (pointed at on the minimap, or soft-targeted in the world): saved as a
+--- spawn point (no yields, no gather count) so the finders and free roam know it exists. Returns key, isNew.
+function Capture:RecordSeen(uiMap, x, y, typeKey)
+    if not (uiMap and x and y and typeKey) then return nil end
+    local zone = ns.db.nodes[uiMap]
+    if not zone then zone = {} ns.db.nodes[uiMap] = zone end
+    for key, rec in pairs(zone) do
+        if rec.t == typeKey then
+            local nx, ny = ns.DecodeXY(key, 1)
+            if ns.Player:Distance(uiMap, x, y, nx, ny) < 15 then
+                rec.seen = time()
+                return key, false
+            end
+        end
+    end
+    local key = ns.EncodeXY(x, y)
+    zone[key] = { t = typeKey, c = 0, y = {}, s = "seen", seen = time() }
+    DS:Invalidate(uiMap)
+    ns:Fire("FORAGER_NODES_CHANGED", uiMap)
+    if ns.Comms then ns.Comms:Share(typeKey, uiMap, key) end
+    return key, true
+end
+
 local function resolveNodeType(kind, sources, items, firstItem)
     for _, guid in ipairs(sources) do
         local id, gkind = ns.IDFromGUID(guid)

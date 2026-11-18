@@ -25,4 +25,5 @@ read_globals = {
   "C_Container", "C_GameRules", "GetAddOnMemoryUsage", "UpdateAddOnMemoryUsage", "GetLocale", "GetRepairAllCost",
   "GetUnitSpeed", "HandleModifiedItemClick", "IsAltKeyDown", "IsMounted", "IsSwimming", "ItemRefTooltip",
   "UnitCastingInfo", "UnitChannelInfo", "UnitIsAFK", "UnitIsDeadOrGhost", "UnitOnTaxi", "debugprofilestop",
+  "IsControlKeyDown", "UnitGUID", "GetCursorPosition", "Minimap",
 }

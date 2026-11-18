@@ -38,6 +38,7 @@ local function store()
     d.repair = d.repair or { c = 0, k = 0 }
     d.calib = d.calib or {}
     d.back = d.back or {}
+    d.names = d.names or {} -- node names in your client's language -> node type (soft target)
     return d
 end
 Learn.Store = store
